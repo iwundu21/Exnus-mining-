@@ -1,14 +1,18 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
   
   --color-background: #0B0B0B;
+  --color-surface: #141414;
   --color-primary: #4B0F1A;
   --color-accent: #5A0F1F;
   --color-text: #FFFFFF;
+  --color-muted: #8E9299;
+  --color-line: rgba(255, 255, 255, 0.05);
 }
 
 @layer base {
@@ -32,19 +36,56 @@
   @apply bg-primary rounded-full;
 }
 
-.device-container {
-  @apply min-h-screen flex flex-col max-w-md mx-auto relative;
+.app-container {
+  @apply min-h-screen flex flex-col md:flex-row relative;
 }
 
-.footer-nav {
-  @apply fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-background/80 backdrop-blur-md border-t border-white/10 flex justify-around items-center py-3 z-50;
+.sidebar {
+  @apply hidden md:flex flex-col w-64 border-r border-line bg-surface/50 backdrop-blur-xl h-screen sticky top-0;
+}
+
+.mobile-nav {
+  @apply md:hidden fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-md border-t border-line flex justify-around items-center py-3 z-50;
 }
 
 .nav-item {
-  @apply flex flex-col items-center gap-1 text-xs opacity-50 transition-opacity;
+  @apply flex flex-col md:flex-row items-center gap-2 text-xs md:text-sm px-4 py-3 md:w-full transition-all duration-200;
+  @apply text-muted hover:text-text;
 }
 
 .nav-item.active {
-  @apply opacity-100 text-primary;
+  @apply text-text bg-primary/10 border-r-2 border-primary md:border-r-4;
+}
+
+.nav-item svg {
+  @apply w-5 h-5;
+}
+
+.content-area {
+  @apply flex-1 flex flex-col min-h-screen pb-20 md:pb-0;
+}
+
+.data-grid {
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-line border border-line;
+}
+
+.data-card {
+  @apply bg-background p-6 space-y-2;
+}
+
+.data-value {
+  @apply font-mono text-2xl font-bold tracking-tight;
+}
+
+.data-label {
+  @apply text-[10px] uppercase font-bold tracking-widest text-muted;
+}
+
+.status-indicator {
+  @apply w-2 h-2 rounded-full;
+}
+
+.status-online {
+  @apply bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)];
 }
 
