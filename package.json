@@ -4,9 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "tsx src/server.ts",
     "build": "vite build",
-    "start": "node server.ts",
+    "start": "node src/server.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

@@ -3,7 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, orderBy, limit, getDocs, increment, runTransaction } from "firebase/firestore";
-import firebaseConfig from "./firebase-applet-config.json";
+import firebaseConfig from "../firebase-applet-config.json";
 
 // ========================================== //
 // FIREBASE SETUP
