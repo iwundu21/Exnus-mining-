@@ -64,23 +64,27 @@ async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
   return await runTransaction(db, async (transaction) => {
     const globalRef = doc(db, "system", "state");
     const globalSnap = await transaction.get(globalRef);
+    console.log("Global state exists:", globalSnap.exists());
     let state = (globalSnap.data() as GlobalState) || {
       lastProcessedBlock: 0,
       accRewardPerShare: 0,
       totalHashpower: 0,
       totalDistributed: 0,
     };
+    console.log("State:", state);
 
     const now = Math.floor(Date.now() / 1000);
     const currentBlock = Math.floor((now - GENESIS_TIMESTAMP) / BLOCK_INTERVAL);
     
+    const MAX_BLOCKS_PER_SYNC = 100;
     if (currentBlock > state.lastProcessedBlock) {
       console.log(`Processing ${currentBlock - state.lastProcessedBlock} missed blocks...`);
       let newAccRewardPerShare = state.accRewardPerShare;
       let newTotalDistributed = state.totalDistributed;
       
       // Process missed blocks
-      for (let b = state.lastProcessedBlock + 1; b <= currentBlock; b++) {
+      const endBlock = Math.min(currentBlock, state.lastProcessedBlock + MAX_BLOCKS_PER_SYNC);
+      for (let b = state.lastProcessedBlock + 1; b <= endBlock; b++) {
         const reward = getBlockReward(b, newTotalDistributed);
         if (state.totalHashpower > 0) {
           newAccRewardPerShare += reward / state.totalHashpower;
@@ -97,7 +101,7 @@ async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
         });
       }
 
-      state.lastProcessedBlock = currentBlock;
+      state.lastProcessedBlock = endBlock;
       state.accRewardPerShare = newAccRewardPerShare;
       state.totalDistributed = newTotalDistributed;
       
@@ -124,15 +128,20 @@ async function startServer() {
       const now = Math.floor(Date.now() / 1000);
       const countdown = BLOCK_INTERVAL - ((now - GENESIS_TIMESTAMP) % BLOCK_INTERVAL);
       
-      res.json({
-        currentBlock: state.currentBlock,
-        totalBlocks: TOTAL_BLOCKS,
-        countdown,
-        totalDistributed: state.totalDistributed,
-        remainingSupply: TOTAL_SUPPLY - state.totalDistributed,
-        totalHashpower: state.totalHashpower,
-        activeMiners: 124, // Placeholder or query Firestore count
-      });
+      try {
+        res.json({
+          currentBlock: state.currentBlock,
+          totalBlocks: TOTAL_BLOCKS,
+          countdown,
+          totalDistributed: state.totalDistributed,
+          remainingSupply: TOTAL_SUPPLY - state.totalDistributed,
+          totalHashpower: state.totalHashpower,
+          activeMiners: 124, // Placeholder or query Firestore count
+        });
+      } catch (e) {
+        console.error("JSON serialization error:", e);
+        res.status(500).json({ error: "Serialization error" });
+      }
     } catch (error) {
       console.error("Status error:", error);
       res.status(500).json({ error: "Failed to sync engine" });
@@ -162,10 +171,15 @@ async function startServer() {
       // Calculate pending rewards
       const pending = (userData.hashpower * state.accRewardPerShare) - userData.rewardDebt;
       
-      res.json({
-        ...userData,
-        totalEarned: userData.totalEarned + pending,
-      });
+      try {
+        res.json({
+          ...userData,
+          totalEarned: userData.totalEarned + pending,
+        });
+      } catch (e) {
+        console.error("JSON serialization error:", e);
+        res.status(500).json({ error: "Serialization error" });
+      }
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch user" });
     }
