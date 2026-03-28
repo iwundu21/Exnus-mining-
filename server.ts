@@ -216,7 +216,7 @@ async function startServer() {
         
         transaction.set(userRef, userData);
         transaction.set(sigRef, { used: true, timestamp: Date.now() });
-        transaction.update(globalRef, { totalHashpower: increment(hpToAdd) });
+        transaction.set(globalRef, { totalHashpower: increment(hpToAdd) }, { merge: true });
       });
 
       res.json({ success: true });
