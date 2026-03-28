@@ -117,8 +117,10 @@ async function startServer() {
 
   // API ROUTES
   app.get("/api/status", async (req, res) => {
+    console.log("Fetching status...");
     try {
       const state = await syncEngine();
+      console.log("Status fetched:", state);
       const now = Math.floor(Date.now() / 1000);
       const countdown = BLOCK_INTERVAL - ((now - GENESIS_TIMESTAMP) % BLOCK_INTERVAL);
       
