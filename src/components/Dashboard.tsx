@@ -5,6 +5,7 @@ import axios from 'axios';
 import { motion } from 'motion/react';
 import { Cpu, Timer, Database, TrendingUp, Users, Wallet } from 'lucide-react';
 import { formatNumber } from '../lib/utils';
+import { TOTAL_SUPPLY } from '../lib/engine';
 
 interface Status {
   currentBlock: number;
@@ -27,10 +28,11 @@ export default function Dashboard() {
         axios.get('/api/status'),
         publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`) : Promise.resolve({ data: null })
       ]);
+      console.log("Dashboard: statusRes=", statusRes.data);
       setStatus(statusRes.data);
       setUser(userRes.data);
     } catch (err) {
-      console.error(err);
+      console.error("Dashboard error:", err);
     }
   };
 
@@ -167,7 +169,7 @@ export default function Dashboard() {
                 </div>
                 <div className="space-y-1">
                   <p className="data-label">Remaining Supply</p>
-                  <p className="text-xl font-mono font-bold">{formatNumber(status?.remainingSupply || 0)} EXN</p>
+                  <p className="text-xl font-mono font-bold">{formatNumber(status?.remainingSupply ?? TOTAL_SUPPLY)} EXN</p>
                 </div>
               </div>
             </div>

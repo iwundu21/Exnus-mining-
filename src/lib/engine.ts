@@ -43,7 +43,7 @@ export async function syncEngine(): Promise<GlobalState & { currentBlock: number
     const globalRef = doc(db, "system", "state");
     const globalSnap = await transaction.get(globalRef);
     let state = (globalSnap.data() as GlobalState) || {
-      lastProcessedBlock: 0,
+      lastProcessedBlock: -1,
       accRewardPerShare: 0,
       totalHashpower: 0,
       totalDistributed: 0,
@@ -58,10 +58,13 @@ export async function syncEngine(): Promise<GlobalState & { currentBlock: number
     const now = Math.floor(Date.now() / 1000);
     const currentBlock = Math.floor((now - state.genesisTimestamp) / BLOCK_INTERVAL);
     
+    console.log(`Syncing: currentBlock=${currentBlock}, lastProcessedBlock=${state.lastProcessedBlock}`);
+
     // Reset if we've moved backwards in time (e.g. genesis reset)
     if (currentBlock < state.lastProcessedBlock) {
+      console.log("Resetting engine state due to block regression.");
       state = {
-        lastProcessedBlock: 0,
+        lastProcessedBlock: -1,
         accRewardPerShare: 0,
         totalHashpower: state.totalHashpower, // Keep hashpower
         totalDistributed: 0,
