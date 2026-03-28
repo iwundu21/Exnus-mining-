@@ -1,0 +1,33 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A miner in the Exnus network",
+      "type": "object",
+      "properties": {
+        "wallet": { "type": "string", "description": "Solana wallet address" },
+        "hashpower": { "type": "number", "description": "TH/s contribution" },
+        "totalEarned": { "type": "number", "description": "Total EXN mined" },
+        "lastReward": { "type": "number", "description": "Last block reward received" },
+        "lastUpdate": { "type": "number", "description": "Timestamp of last balance update" }
+      },
+      "required": ["wallet", "hashpower", "totalEarned"]
+    },
+    "Block": {
+      "title": "Block",
+      "description": "A mined block in the network",
+      "type": "object",
+      "properties": {
+        "blockNumber": { "type": "number" },
+        "reward": { "type": "number" },
+        "totalHashpower": { "type": "number" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["blockNumber", "reward", "totalHashpower", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{wallet}": { "schema": "User", "description": "User profiles and balances" },
+    "/history/{blockId}": { "schema": "Block", "description": "Mining history log" }
+  }
+}
