@@ -24,11 +24,6 @@ export default defineConfig(({mode}) => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
-        'cross-fetch': path.resolve(__dirname, 'src/lib/fetch-shim.ts'),
-        'node-fetch': path.resolve(__dirname, 'src/lib/fetch-shim.ts'),
-        'isomorphic-fetch': path.resolve(__dirname, 'src/lib/fetch-shim.ts'),
-        'whatwg-fetch': path.resolve(__dirname, 'src/lib/fetch-shim.ts'),
-        'unfetch': path.resolve(__dirname, 'src/lib/fetch-shim.ts'),
       },
     },
     server: {

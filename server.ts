@@ -101,7 +101,7 @@ async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
       state.accRewardPerShare = newAccRewardPerShare;
       state.totalDistributed = newTotalDistributed;
       
-      transaction.update(globalRef, state as any);
+      transaction.set(globalRef, state as any, { merge: true });
     }
     
     return { ...state, currentBlock };
