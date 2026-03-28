@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Exnus Mining</title>
+    <script>
+      // Provide global for libraries that expect it
+      window.global = window;
+      
+      // Prevent libraries from crashing when trying to set fetch on window/global
+      // which is read-only in some environments (like AI Studio preview iframe)
+      try {
+        const originalFetch = window.fetch;
+        Object.defineProperty(window, 'fetch', {
+          configurable: true,
+          enumerable: true,
+          get: () => originalFetch,
+          set: (v) => { 
+            console.warn('Attempted to overwrite window.fetch, ignored to prevent crash.');
+          }
+        });
+      } catch (e) {
+        console.warn('Could not redefine window.fetch, hopefully aliases will catch it.');
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

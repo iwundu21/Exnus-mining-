@@ -1,0 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  
+  --color-background: #0B0B0B;
+  --color-primary: #4B0F1A;
+  --color-accent: #5A0F1F;
+  --color-text: #FFFFFF;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text font-sans antialiased overflow-x-hidden;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-background;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-primary rounded-full;
+}
+
+.device-container {
+  @apply min-h-screen flex flex-col max-w-md mx-auto relative;
+}
+
+.footer-nav {
+  @apply fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-background/80 backdrop-blur-md border-t border-white/10 flex justify-around items-center py-3 z-50;
+}
+
+.nav-item {
+  @apply flex flex-col items-center gap-1 text-xs opacity-50 transition-opacity;
+}
+
+.nav-item.active {
+  @apply opacity-100 text-primary;
+}
+
