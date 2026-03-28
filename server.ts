@@ -8,8 +8,10 @@ import firebaseConfig from "./firebase-applet-config.json";
 // ========================================== //
 // FIREBASE SETUP
 // ========================================== //
+console.log("Initializing Firebase with config:", firebaseConfig.projectId);
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
+console.log("Firestore initialized successfully");
 
 // ========================================== //
 // CONFIG
@@ -37,6 +39,7 @@ async function getGlobalState(): Promise<GlobalState> {
   const snap = await getDoc(globalRef);
   
   if (!snap.exists()) {
+    console.log("Initializing global state in Firestore...");
     const initialState: GlobalState = {
       lastProcessedBlock: 0,
       accRewardPerShare: 0,
@@ -57,6 +60,7 @@ function getBlockReward(blockNumber: number, totalDistributed: number) {
 }
 
 async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
+  console.log("Syncing engine...");
   return await runTransaction(db, async (transaction) => {
     const globalRef = doc(db, "system", "state");
     const globalSnap = await transaction.get(globalRef);
@@ -71,6 +75,7 @@ async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
     const currentBlock = Math.floor((now - GENESIS_TIMESTAMP) / BLOCK_INTERVAL);
     
     if (currentBlock > state.lastProcessedBlock) {
+      console.log(`Processing ${currentBlock - state.lastProcessedBlock} missed blocks...`);
       let newAccRewardPerShare = state.accRewardPerShare;
       let newTotalDistributed = state.totalDistributed;
       
@@ -82,7 +87,7 @@ async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
         }
         newTotalDistributed += reward;
 
-        // Log block to history (optional, but good for UI)
+        // Log block to history
         const historyRef = doc(collection(db, "history"), b.toString());
         transaction.set(historyRef, {
           blockNumber: b,
@@ -124,8 +129,7 @@ async function startServer() {
         totalDistributed: state.totalDistributed,
         remainingSupply: TOTAL_SUPPLY - state.totalDistributed,
         totalHashpower: state.totalHashpower,
-        // We'll estimate active miners for now or query Firestore
-        activeMiners: 124, 
+        activeMiners: 124, // Placeholder or query Firestore count
       });
     } catch (error) {
       console.error("Status error:", error);
@@ -159,7 +163,6 @@ async function startServer() {
       res.json({
         ...userData,
         totalEarned: userData.totalEarned + pending,
-        // For UI consistency, we show the "processed" total
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch user" });

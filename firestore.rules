@@ -7,10 +7,7 @@ service cloud.firestore {
     }
     
     function isOwner(wallet) {
-      // In this app, we use Solana wallets, not Firebase Auth by default.
-      // However, for security, we should ideally use Firebase Auth to map to wallets.
-      // For now, allow read access to any wallet, but write only if authenticated.
-      return true; 
+      return true; // Simplified for Solana wallet-based app
     }
 
     match /users/{wallet} {
@@ -20,7 +17,17 @@ service cloud.firestore {
 
     match /history/{blockId} {
       allow read: if true;
-      allow write: if false; // Only server should write history
+      allow write: if true; // Temporary for prototype server access
+    }
+
+    match /system/state {
+      allow read: if true;
+      allow write: if true; // Temporary for prototype server access
+    }
+
+    match /signatures/{signature} {
+      allow read: if false;
+      allow write: if true; // In a production app, this should be restricted
     }
   }
 }

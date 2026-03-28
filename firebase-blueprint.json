@@ -2,32 +2,50 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "A miner in the Exnus network",
+      "description": "Mining user data",
       "type": "object",
       "properties": {
-        "wallet": { "type": "string", "description": "Solana wallet address" },
-        "hashpower": { "type": "number", "description": "TH/s contribution" },
-        "totalEarned": { "type": "number", "description": "Total EXN mined" },
-        "lastReward": { "type": "number", "description": "Last block reward received" },
-        "lastUpdate": { "type": "number", "description": "Timestamp of last balance update" }
+        "wallet": { "type": "string" },
+        "hashpower": { "type": "number" },
+        "totalEarned": { "type": "number" },
+        "rewardDebt": { "type": "number" },
+        "lastReward": { "type": "number" }
       },
-      "required": ["wallet", "hashpower", "totalEarned"]
+      "required": ["wallet", "hashpower", "totalEarned", "rewardDebt"]
     },
     "Block": {
       "title": "Block",
-      "description": "A mined block in the network",
+      "description": "Mining block history",
       "type": "object",
       "properties": {
         "blockNumber": { "type": "number" },
+        "timestamp": { "type": "number" },
         "reward": { "type": "number" },
-        "totalHashpower": { "type": "number" },
-        "timestamp": { "type": "number" }
+        "totalHashpower": { "type": "number" }
       },
-      "required": ["blockNumber", "reward", "totalHashpower", "timestamp"]
+      "required": ["blockNumber", "timestamp", "reward", "totalHashpower"]
     }
   },
   "firestore": {
-    "/users/{wallet}": { "schema": "User", "description": "User profiles and balances" },
-    "/history/{blockId}": { "schema": "Block", "description": "Mining history log" }
+    "/users/{wallet}": {
+      "schema": "User",
+      "description": "User mining profiles"
+    },
+    "/history/{blockNumber}": {
+      "schema": "Block",
+      "description": "Mining block history"
+    },
+    "/system/state": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "lastProcessedBlock": { "type": "number" },
+          "accRewardPerShare": { "type": "number" },
+          "totalHashpower": { "type": "number" },
+          "totalDistributed": { "type": "number" }
+        }
+      },
+      "description": "Global engine state"
+    }
   }
 }
