@@ -21,7 +21,7 @@ const TOTAL_SUPPLY = 90_000_000;
 const MINING_DAYS = 180;
 const TOTAL_BLOCKS = Math.floor((MINING_DAYS * 24 * 60) / 20); // 12,960
 const HASHPOWER_PER_SOL = 1000;
-const GENESIS_TIMESTAMP = 1711641600; // Fixed start date: March 28, 2024
+const GENESIS_TIMESTAMP = Math.floor(Date.now() / 1000); // Set to current time
 
 // ========================================== //
 // ENGINE LOGIC (Deterministic & Persistent)
@@ -76,6 +76,16 @@ async function syncEngine(): Promise<GlobalState & { currentBlock: number }> {
     const now = Math.floor(Date.now() / 1000);
     const currentBlock = Math.floor((now - GENESIS_TIMESTAMP) / BLOCK_INTERVAL);
     
+    // Reset if we've moved backwards in time (e.g. genesis reset)
+    if (currentBlock < state.lastProcessedBlock) {
+      state = {
+        lastProcessedBlock: 0,
+        accRewardPerShare: 0,
+        totalHashpower: state.totalHashpower, // Keep hashpower
+        totalDistributed: 0,
+      };
+    }
+    
     const MAX_BLOCKS_PER_SYNC = 100;
     if (currentBlock > state.lastProcessedBlock) {
       console.log(`Processing ${currentBlock - state.lastProcessedBlock} missed blocks...`);
@@ -128,6 +138,9 @@ async function startServer() {
       const now = Math.floor(Date.now() / 1000);
       const countdown = BLOCK_INTERVAL - ((now - GENESIS_TIMESTAMP) % BLOCK_INTERVAL);
       
+      const usersSnap = await getDocs(collection(db, "users"));
+      const activeMiners = usersSnap.size;
+      
       try {
         res.json({
           currentBlock: state.currentBlock,
@@ -136,7 +149,7 @@ async function startServer() {
           totalDistributed: state.totalDistributed,
           remainingSupply: TOTAL_SUPPLY - state.totalDistributed,
           totalHashpower: state.totalHashpower,
-          activeMiners: 124, // Placeholder or query Firestore count
+          activeMiners,
         });
       } catch (e) {
         console.error("JSON serialization error:", e);
@@ -161,7 +174,10 @@ async function startServer() {
           hashpower: 0,
           totalEarned: 0,
           rewardDebt: 0,
-          lastReward: 0
+          lastReward: 0,
+          staked: 0,
+          locked: 0,
+          available: 0
         };
         await setDoc(userRef, newUser);
         return res.json(newUser);

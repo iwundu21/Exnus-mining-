@@ -113,19 +113,19 @@ export default function MyAssets() {
             <div className="data-grid rounded-2xl overflow-hidden">
               <div className="data-card border-r border-line">
                 <p className="data-label">Staked EXN</p>
-                <p className="text-xl font-mono font-bold">12,450.00</p>
+                <p className="text-xl font-mono font-bold">{formatNumber(user?.staked || 0)}</p>
               </div>
               <div className="data-card border-r border-line">
                 <p className="data-label">Locked Rewards</p>
-                <p className="text-xl font-mono font-bold">1,204.42</p>
+                <p className="text-xl font-mono font-bold">{formatNumber(user?.locked || 0)}</p>
               </div>
               <div className="data-card border-r border-line">
                 <p className="data-label">Available Balance</p>
-                <p className="text-xl font-mono font-bold text-primary">450.12</p>
+                <p className="text-xl font-mono font-bold text-primary">{formatNumber(user?.available || 0)}</p>
               </div>
               <div className="data-card">
                 <p className="data-label">Network Tier</p>
-                <p className="text-xl font-mono font-bold">GOLD</p>
+                <p className="text-xl font-mono font-bold">{user?.tier || 'BRONZE'}</p>
               </div>
             </div>
           </div>
