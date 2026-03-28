@@ -5,12 +5,13 @@ import axios from 'axios';
 import { motion } from 'motion/react';
 import { Cpu, Timer, Database, TrendingUp, Users, Wallet } from 'lucide-react';
 import { formatNumber } from '../lib/utils';
-import { TOTAL_SUPPLY } from '../lib/engine';
+import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/engine';
 
 interface Status {
   currentBlock: number;
   totalBlocks: number;
   countdown: number;
+  blockReward: number;
   totalDistributed: number;
   remainingSupply: number;
   totalHashpower: number;
@@ -42,7 +43,18 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [publicKey]);
 
-  const formatTime = (seconds: number) => {
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setStatus(prev => {
+        if (!prev) return prev;
+        return { ...prev, countdown: Math.max(0, prev.countdown - 1) };
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (seconds: number | undefined | null) => {
+    if (seconds === undefined || seconds === null || isNaN(seconds)) return '0:00';
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
@@ -86,14 +98,17 @@ export default function Dashboard() {
           transition={{ delay: 0.1 }}
           className="data-card border-r border-line"
         >
-          <div className="flex items-center gap-2 data-label">
-            <Timer size={14} />
-            <span>Next Reward</span>
+          <div className="flex items-center justify-between data-label">
+            <div className="flex items-center gap-2">
+              <Timer size={14} />
+              <span>Next Reward</span>
+            </div>
+            <span className="text-primary font-mono">{status ? formatTime(status.countdown) : '0:00'}</span>
           </div>
           <div className="data-value text-primary">
-            {status ? formatTime(status.countdown) : '0:00'}
+            {formatNumber(status?.blockReward || 0)} <span className="text-xs text-muted">EXN</span>
           </div>
-          <p className="text-[10px] text-muted">Block Interval: 10m</p>
+          <p className="text-[10px] text-muted">Block Interval: {BLOCK_INTERVAL / 60}m</p>
         </motion.div>
 
         <motion.div 
