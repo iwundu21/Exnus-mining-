@@ -4,18 +4,19 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
-import { LayoutDashboard, Wallet, History, Cpu } from 'lucide-react';
+import { LayoutDashboard, Wallet, History, Cpu, Shield } from 'lucide-react';
 import { cn } from './lib/utils';
 
 // Pages
 import Dashboard from './components/Dashboard';
 import MyAssets from './components/MyAssets';
 import MiningHistory from './components/MiningHistory';
+import AdminDashboard from './components/AdminDashboard';
 
 // Default styles that can be overridden by your app
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-type Page = 'dashboard' | 'assets' | 'history';
+type Page = 'dashboard' | 'assets' | 'history' | 'admin';
 
 class ErrorBoundary extends React.Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   state = { hasError: false, error: null as Error | null };
@@ -73,6 +74,7 @@ export default function App() {
       case 'dashboard': return <Dashboard />;
       case 'assets': return <MyAssets />;
       case 'history': return <MiningHistory />;
+      case 'admin': return <AdminDashboard />;
       default: return <Dashboard />;
     }
   };
@@ -129,10 +131,17 @@ export default function App() {
                       <span>Secure Read-Only Access</span>
                     </div>
                   </div>
-                  <div className="pt-4 border-t border-white/5">
+                  <div className="pt-4 border-t border-white/5 space-y-4">
                     <p className="text-[8px] text-muted uppercase tracking-widest leading-relaxed text-center">
                       Exnus uses read-only connection. We never access your private keys or funds.
                     </p>
+                    <button 
+                      onClick={() => setCurrentPage('admin')}
+                      className="w-full flex items-center justify-center gap-2 text-[10px] text-muted hover:text-primary transition-colors uppercase tracking-widest font-bold"
+                    >
+                      <Shield size={10} />
+                      Admin Dashboard
+                    </button>
                   </div>
                 </div>
               </aside>
@@ -153,8 +162,23 @@ export default function App() {
 
               {/* Main Content Area */}
               <main className="content-area">
-                <div className="flex-1 p-4 md:p-8 lg:p-12 max-w-7xl mx-auto w-full">
-                  {renderPage()}
+                <div className="flex-1 p-4 md:p-8 lg:p-12 max-w-7xl mx-auto w-full flex flex-col min-h-full">
+                  <div className="flex-1">
+                    {renderPage()}
+                  </div>
+                  
+                  <footer className="mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] text-muted uppercase tracking-widest font-bold">
+                    <p>© 2026 EXNUS MINING ENGINE. ALL RIGHTS RESERVED.</p>
+                    <div className="flex items-center gap-6">
+                      <button onClick={() => setCurrentPage('dashboard')} className="hover:text-primary transition-colors">Dashboard</button>
+                      <button onClick={() => setCurrentPage('assets')} className="hover:text-primary transition-colors">Assets</button>
+                      <button onClick={() => setCurrentPage('history')} className="hover:text-primary transition-colors">History</button>
+                      <button onClick={() => setCurrentPage('admin')} className="hover:text-primary transition-colors flex items-center gap-1.5">
+                        <Shield size={10} />
+                        Admin
+                      </button>
+                    </div>
+                  </footer>
                 </div>
               </main>
 
@@ -180,6 +204,13 @@ export default function App() {
                 >
                   <History />
                   <span>History</span>
+                </button>
+                <button 
+                  onClick={() => setCurrentPage('admin')}
+                  className={cn("nav-item", currentPage === 'admin' && "active")}
+                >
+                  <Shield />
+                  <span>Admin</span>
                 </button>
               </nav>
             </div>

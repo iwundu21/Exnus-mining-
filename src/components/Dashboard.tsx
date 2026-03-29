@@ -45,8 +45,15 @@ export default function Dashboard() {
       setStatus(prev => {
         if (!prev) return statusRes.data;
         const newStatus = { ...statusRes.data };
-        // Prevent jitter by keeping local countdown if it's close to server's
-        if (Math.abs(prev.countdown - newStatus.countdown) <= 2) {
+        
+        // If the server just processed a block (countdown reset to high value), 
+        // we should always take the server's value.
+        if (newStatus.countdown > prev.countdown + 10) {
+          return newStatus;
+        }
+
+        // Otherwise, if it's close, keep the local countdown for smoothness
+        if (Math.abs(prev.countdown - newStatus.countdown) <= 3) {
           newStatus.countdown = prev.countdown;
         }
         return newStatus;

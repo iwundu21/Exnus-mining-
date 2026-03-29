@@ -1,12 +1,64 @@
 import express from "express";
+import "dotenv/config";
 import { createServer as createViteServer } from "vite";
 import { Connection } from "@solana/web3.js";
 import path from "path";
 import fs from "fs";
+import axios from "axios";
+import crypto from "crypto";
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc } from 'firebase/firestore';
 
-const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
+const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+console.log(`📦 Loading Firebase config from ${firebaseConfigPath}...`);
+const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+console.log(`✅ Firebase config loaded for project: ${firebaseConfig.projectId}`);
+
+// ==========================================
+// CRYPTO SCRAMBLER
+// ==========================================
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "exnus_mining_engine_secure_key_32"; // 32 chars
+const IV_LENGTH = 16;
+
+function encrypt(text: string) {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+function decrypt(text: string) {
+  try {
+    const textParts = text.split(':');
+    if (textParts.length < 2) return text;
+    const iv = Buffer.from(textParts.shift()!, 'hex');
+    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY.padEnd(32).slice(0, 32)), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  } catch (e) {
+    return text;
+  }
+}
+
+function pack(data: any, plainFields: string[] = []) {
+  const plain: any = {};
+  plainFields.forEach(f => { if (data[f] !== undefined) plain[f] = data[f]; });
+  return { ...plain, _e: encrypt(JSON.stringify(data)) };
+}
+
+function unpack(data: any) {
+  if (data && data._e) {
+    try {
+      return JSON.parse(decrypt(data._e));
+    } catch (e) {
+      return data;
+    }
+  }
+  return data;
+}
 
 const app = express();
 app.use(express.json());
@@ -45,27 +97,42 @@ let state = {
 
 // Sync state from Firestore on startup
 async function syncState() {
+  console.log("📦 Starting syncState...");
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Sync timeout")), 10000));
+  
   try {
-    const statusDoc = await getDoc(doc(db, 'status', 'global'));
-    if (statusDoc.exists()) {
-      const data = statusDoc.data();
-      state.currentBlock = data.currentBlock;
-      state.lastBlockTimestamp = data.lastBlockTimestamp;
-      state.totalDistributed = data.totalDistributed;
-    }
+    await Promise.race([
+      (async () => {
+        const statusDoc = await getDoc(doc(db, 'status', 'global'));
+        if (statusDoc.exists()) {
+          const data = unpack(statusDoc.data());
+          state.currentBlock = data.currentBlock || 0;
+          state.lastBlockTimestamp = data.lastBlockTimestamp || GENESIS_TIMESTAMP;
+          state.totalDistributed = data.totalDistributed || 0;
+          
+          const expectedTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
+          if (Math.abs(state.lastBlockTimestamp - expectedTimestamp) > BLOCK_INTERVAL) {
+            console.warn(`[EXNUS] Timestamp inconsistency detected. Expected ${expectedTimestamp}, got ${state.lastBlockTimestamp}. Resetting...`);
+            state.lastBlockTimestamp = expectedTimestamp;
+          }
+        }
 
-    const usersSnap = await getDocs(collection(db, 'users'));
-    state.users = usersSnap.docs.map(d => d.data());
+        const usersSnap = await getDocs(collection(db, 'users'));
+        state.users = usersSnap.docs.map(d => unpack(d.data()));
 
-    const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
-    const rawHistory = historySnap.docs.map(d => d.data());
-    state.history = rawHistory.reduce((acc: any[], current: any) => {
-      const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
-      if (!exists) acc.push(current);
-      return acc;
-    }, []).slice(0, 50);
+        const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
+        const rawHistory = historySnap.docs.map(d => unpack(d.data()));
+        state.history = rawHistory.reduce((acc: any[], current: any) => {
+          const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
+          if (!exists) acc.push(current);
+          return acc;
+        }, []).slice(0, 50);
+      })(),
+      timeout
+    ]);
+    console.log("✅ syncState completed.");
   } catch (err) {
-    console.error("Error syncing state from Firestore:", err);
+    console.error("❌ Error syncing state from Firestore:", err);
   }
 }
 
@@ -77,24 +144,62 @@ function now() {
 }
 
 function getCountdown() {
-  const elapsed = now() - state.lastBlockTimestamp;
-  if (elapsed < 0) {
-    return Math.abs(elapsed);
-  }
-  return BLOCK_INTERVAL - (elapsed % BLOCK_INTERVAL);
+  const nextBlockTimestamp = GENESIS_TIMESTAMP + (state.currentBlock + 1) * BLOCK_INTERVAL;
+  const remaining = nextBlockTimestamp - now();
+  
+  // If we are behind (remaining < 0), it should show 0 until processed
+  if (remaining < 0) return 0;
+  
+  // If it's more than the interval, something is wrong with our state, return 0 or interval
+  if (remaining > BLOCK_INTERVAL) return BLOCK_INTERVAL;
+  
+  return remaining;
 }
 
 // ==========================================
 // USER HELPER
 // ==========================================
-async function getUser(wallet: string) {
+async function getUser(wallet: string, req?: any) {
   let user = state.users.find((u) => u.wallet === wallet);
+  let isNew = false;
 
   if (!user) {
-    user = { wallet, hashpower: 0, totalEarned: 0, history: [] };
+    user = { 
+      wallet, 
+      hashpower: 0, 
+      totalEarned: 0, 
+      history: [], 
+      solSpent: 0,
+      ip: req?.ip || req?.headers['x-forwarded-for'] || 'unknown',
+      country: 'Unknown',
+      countryCode: 'UN'
+    };
+    isNew = true;
+  }
+
+  // Detect country if missing or unknown
+  if (user.country === 'Unknown' || !user.countryCode) {
+    const ip = (req?.ip || req?.headers['x-forwarded-for'] || user.ip || 'unknown').split(',')[0].trim();
+    if (ip !== 'unknown' && ip !== '::1' && ip !== '127.0.0.1') {
+      try {
+        const geoRes = await axios.get(`http://ip-api.com/json/${ip}`);
+        if (geoRes.data && geoRes.data.status === 'success') {
+          user.country = geoRes.data.country;
+          user.countryCode = geoRes.data.countryCode;
+          user.ip = ip;
+          
+          // Update in Firestore
+          await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
+        }
+      } catch (e) {
+        console.error("GeoIP error:", e);
+      }
+    }
+  }
+
+  if (isNew) {
     state.users.push(user);
-    // Save to Firestore
-    await setDoc(doc(db, 'users', wallet), user);
+    await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
   }
 
   return user;
@@ -131,23 +236,9 @@ async function processBlock() {
   if (totalHashpower === 0) {
     console.log(`[EXNUS ENGINE] Zero network hashpower detected. Block #${state.currentBlock} rewards deferred to maintain economic scarcity. Generating null-hash cryptographic record.`);
     
-    for (const user of state.users) {
-      const record = {
-        blockNumber: state.currentBlock,
-        reward: 0,
-        timestamp: state.lastBlockTimestamp,
-        hashpower: user.hashpower,
-        note: "Empty Block - No Hashpower"
-      };
-      if (!user.history) user.history = [];
-      
-      const exists = user.history.some((h: any) => h.blockNumber === record.blockNumber && h.timestamp === record.timestamp);
-      if (!exists) {
-        user.history.unshift(record);
-        if (user.history.length > 20) user.history.pop();
-      }
-      await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), record);
-    }
+    // Only process users who have some hashpower (though in this block it should be zero)
+    // Actually, if totalHashpower is 0, we don't need to add history to anyone.
+    // We just log the empty block globally.
 
     const emptyBlockData = {
       blockNumber: state.currentBlock,
@@ -163,19 +254,21 @@ async function processBlock() {
       state.history.unshift(emptyBlockData);
       if (state.history.length > 50) state.history.pop();
     }
-    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), emptyBlockData);
+    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(emptyBlockData, ['blockNumber', 'timestamp']));
 
     state.lastBlockTimestamp += BLOCK_INTERVAL;
-    await setDoc(doc(db, 'status', 'global'), {
+    await setDoc(doc(db, 'status', 'global'), pack({
       currentBlock: state.currentBlock,
       lastBlockTimestamp: state.lastBlockTimestamp,
       totalDistributed: state.totalDistributed
-    });
+    }));
     return;
   }
 
   console.log(`\n⛏ Block #${state.currentBlock}`);
   console.log(`Reward: ${blockReward.toFixed(4)}`);
+
+  const blockHash = crypto.createHash('sha256').update(`${state.currentBlock}-${state.lastBlockTimestamp}-${totalHashpower}`).digest('hex');
 
   const blockData = {
     blockNumber: state.currentBlock,
@@ -183,11 +276,14 @@ async function processBlock() {
     reward: blockReward,
     totalHashpower: totalHashpower,
     activeMiners: state.users.filter(u => u.hashpower > 0).length,
+    hash: blockHash
   };
 
-  // Update users and their history in Firestore
-  for (const user of state.users) {
-    const reward = totalHashpower > 0 ? (user.hashpower / totalHashpower) * blockReward : 0;
+  // Update only users with active hashpower
+  const activeUsers = state.users.filter(u => u.hashpower > 0);
+  
+  for (const user of activeUsers) {
+    const reward = (user.hashpower / totalHashpower) * blockReward;
 
     user.totalEarned += reward;
     state.totalDistributed += reward;
@@ -196,7 +292,8 @@ async function processBlock() {
     blockNumber: state.currentBlock,
     reward: reward,
     timestamp: state.lastBlockTimestamp,
-    hashpower: user.hashpower
+    hashpower: user.hashpower,
+    hash: blockHash
   };
 
   if (!user.history) user.history = [];
@@ -209,11 +306,18 @@ async function processBlock() {
   }
 
     // Persist user update and history record
-    await updateDoc(doc(db, 'users', user.wallet), {
-      totalEarned: user.totalEarned,
-      lastReward: reward
-    });
-    await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), record);
+    await setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet']));
+    await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(record, ['blockNumber', 'timestamp']));
+    
+    // Store in global history rewards subcollection
+    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`, 'rewards', user.wallet), pack({
+      wallet: user.wallet,
+      reward: reward,
+      hashpower: user.hashpower,
+      timestamp: state.lastBlockTimestamp,
+      blockNumber: state.currentBlock,
+      status: "CONFIRMED"
+    }, ['wallet', 'blockNumber', 'timestamp']));
 
     console.log(`💰 ${user.wallet} → ${reward.toFixed(4)}`);
   }
@@ -226,16 +330,16 @@ async function processBlock() {
   }
 
   // Persist global history and status
-  await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), blockData);
+  await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp']));
   
   state.currentBlock++;
   state.lastBlockTimestamp += BLOCK_INTERVAL;
 
-  await setDoc(doc(db, 'status', 'global'), {
+  await setDoc(doc(db, 'status', 'global'), pack({
     currentBlock: state.currentBlock,
     lastBlockTimestamp: state.lastBlockTimestamp,
     totalDistributed: state.totalDistributed
-  });
+  }));
 }
 
 // ==========================================
@@ -245,10 +349,14 @@ async function checkBlocks() {
   const diff = now() - state.lastBlockTimestamp;
   if (diff < 0) return; // Not started yet
 
-  const blocks = Math.floor(diff / BLOCK_INTERVAL);
+  // Calculate how many blocks we are behind
+  const blocksBehind = Math.floor(diff / BLOCK_INTERVAL);
 
-  for (let i = 0; i < blocks; i++) {
-    await processBlock();
+  if (blocksBehind > 0) {
+    console.log(`[EXNUS ENGINE] Catching up ${blocksBehind} blocks...`);
+    for (let i = 0; i < blocksBehind; i++) {
+      await processBlock();
+    }
   }
 }
 
@@ -302,6 +410,9 @@ app.get("/api/status", (req, res) => {
   const totalUsers = state.users.length;
   const totalHashpower = state.users.reduce((sum, u) => sum + u.hashpower, 0);
   
+  const countdown = getCountdown();
+  console.log(`[DEBUG] /api/status: now=${now()}, lastBlock=${state.lastBlockTimestamp}, diff=${now() - state.lastBlockTimestamp}, countdown=${countdown}`);
+  
   res.json({
     currentBlock: state.currentBlock,
     totalBlocks: TOTAL_BLOCKS,
@@ -316,12 +427,25 @@ app.get("/api/status", (req, res) => {
   });
 });
 
+// Get Block Rewards
+app.get("/api/history/:blockId/rewards", async (req, res) => {
+  const { blockId } = req.params;
+  try {
+    const rewardsSnap = await getDocs(collection(db, 'history', blockId, 'rewards'));
+    const rewards = rewardsSnap.docs.map(d => unpack(d.data()));
+    res.json(rewards);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch rewards" });
+  }
+});
+
 // Get User
 app.get("/api/user/:wallet", async (req, res) => {
-  const user = await getUser(req.params.wallet);
+  const user = await getUser(req.params.wallet, req);
   // Fetch history from Firestore for this user
   const historySnap = await getDocs(query(collection(db, 'users', user.wallet, 'history'), orderBy('blockNumber', 'desc'), limit(40)));
-  const rawHistory = historySnap.docs.map(d => d.data());
+  const rawHistory = historySnap.docs.map(d => unpack(d.data()));
   
   // Deduplicate by blockNumber and timestamp
   const history = rawHistory.reduce((acc: any[], current: any) => {
@@ -351,13 +475,14 @@ app.post("/api/buy-hashpower", async (req, res) => {
     return res.status(400).json({ error: "Invalid payment" });
   }
 
-  const user = await getUser(wallet);
+  const user = await getUser(wallet, req);
 
   const hp = solAmount * HASHPOWER_PER_SOL;
   user.hashpower += hp;
+  user.solSpent = (user.solSpent || 0) + solAmount;
 
   // Persist update
-  await updateDoc(doc(db, 'users', wallet), { hashpower: user.hashpower });
+  await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
 
   res.json({
     message: "Hashpower added",
@@ -373,7 +498,7 @@ app.post("/api/set-hashpower", async (req, res) => {
   const user = await getUser(wallet);
   user.hashpower = hashpower;
   
-  await updateDoc(doc(db, 'users', wallet), { hashpower: user.hashpower });
+  await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
 
   res.json(user);
 });
@@ -403,22 +528,28 @@ app.get("/api/history", (req, res) => {
 // ==========================================
 async function startServer() {
   const PORT = 3000;
+  console.log("🚀 Starting Exnus Mining Engine Server...");
 
   // Sync state from Firestore
+  console.log("📦 Syncing state from Firestore...");
   await syncState();
+  console.log("✅ State synced.");
 
   // Initial check
-  await checkBlocks();
-  setInterval(checkBlocks, 5000);
+  console.log("🔍 Running initial block check...");
+  // Moved to after app.listen
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
+    console.log("🛠️  Initializing Vite middleware...");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
+    console.log("✅ Vite middleware ready.");
   } else {
+    console.log("📦 Serving production build...");
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
@@ -428,6 +559,14 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Exnus Mining Engine Live on http://localhost:${PORT}`);
+    
+    // Run catch-up in background after server starts
+    (async () => {
+      console.log("🔍 Running initial block check...");
+      await checkBlocks();
+      setInterval(checkBlocks, 5000);
+      console.log("✅ Initial check complete.");
+    })();
   });
 }
 
