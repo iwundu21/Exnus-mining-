@@ -78,6 +78,7 @@ const TOTAL_BLOCKS = Math.floor((MINING_DAYS * 24 * 60) / 20); // 12,960
 const HASHPOWER_PER_SOL = 70;
 
 const TREASURY_WALLET = "H2bdBhMeNwjekkpsyM2g7pCDuWUxgxADMGh4q8xAnt8J";
+const ADMIN_WALLET = "9Kqt28pfMVBsBvXYYnYQCT2BZyorAwzbR6dUmgQfsZYW";
 const connection = new Connection("https://solana.llamarpc.com", "confirmed");
 
 // Fixed start time: 2026-03-29 10:08:10 UTC
@@ -159,22 +160,63 @@ function getCountdown() {
 // ==========================================
 // USER HELPER
 // ==========================================
+function generateReferralId() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789@#$';
+  let result = '';
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 async function getUser(wallet: string, req?: any) {
   let user = state.users.find((u) => u.wallet === wallet);
   let isNew = false;
 
   if (!user) {
+    // Generate a unique referral ID
+    let referralId = generateReferralId();
+    while (state.users.find(u => u.referralId === referralId)) {
+      referralId = generateReferralId();
+    }
+
     user = { 
       wallet, 
+      referralId,
       hashpower: 0, 
       totalEarned: 0, 
       history: [], 
       solSpent: 0,
+      referralCount: 0,
+      referralRewards: 0,
+      referredBy: req?.query?.ref || null, // This will now be a referralId
       ip: req?.ip || req?.headers['x-forwarded-for'] || 'unknown',
       country: 'Unknown',
       countryCode: 'UN'
     };
     isNew = true;
+
+    // If referred by someone, increment their referral count
+    if (user.referredBy) {
+      // Find referrer by referralId instead of wallet
+      const referrer = state.users.find(u => u.referralId === user.referredBy);
+      if (referrer) {
+        referrer.referralCount = (referrer.referralCount || 0) + 1;
+        // Give referrer a small hashpower bonus? (e.g. 0.1 TH/s)
+        referrer.hashpower = (referrer.hashpower || 0) + 0.1;
+        await saveUser(referrer);
+      }
+    }
+  }
+
+  // Ensure existing users have a referralId
+  if (!user.referralId) {
+    let referralId = generateReferralId();
+    while (state.users.find(u => u.referralId === referralId)) {
+      referralId = generateReferralId();
+    }
+    user.referralId = referralId;
+    await saveUser(user);
   }
 
   // Detect country if missing or unknown
@@ -304,16 +346,20 @@ async function processBlock() {
   
   for (const user of activeUsers) {
     const reward = (user.hashpower / totalHashpower) * blockReward;
+    fs.appendFileSync(path.join(process.cwd(), 'debug.log'), `[${new Date().toISOString()}] User ${user.wallet}: hashpower=${user.hashpower}, totalHashpower=${totalHashpower}, blockReward=${blockReward}, reward=${reward}\n`);
 
     user.totalEarned += reward;
     state.totalDistributed += reward;
+
+  const rewardHash = crypto.createHash('sha256').update(`${state.currentBlock}-${state.lastBlockTimestamp}-${user.wallet}-${reward}`).digest('hex');
 
   const record = {
     blockNumber: state.currentBlock,
     reward: reward,
     timestamp: state.lastBlockTimestamp,
     hashpower: user.hashpower,
-    hash: blockHash
+    hash: blockHash,
+    rewardHash: rewardHash
   };
 
   if (!user.history) user.history = [];
@@ -337,7 +383,8 @@ async function processBlock() {
         hashpower: user.hashpower,
         timestamp: state.lastBlockTimestamp,
         blockNumber: state.currentBlock,
-        status: "CONFIRMED"
+        status: "CONFIRMED",
+        rewardHash: rewardHash
       }, ['wallet', 'blockNumber', 'timestamp']));
     } catch (err) {
       console.error(`❌ Firestore Error (user ${user.wallet}):`, err);
@@ -379,6 +426,7 @@ async function checkBlocks() {
   isChecking = true;
   try {
     const diff = now() - state.lastBlockTimestamp;
+    fs.appendFileSync(path.join(process.cwd(), 'debug.log'), `[${new Date().toISOString()}] checkBlocks: now=${now()}, lastBlockTimestamp=${state.lastBlockTimestamp}, diff=${diff}\n`);
     if (diff < 0) return; // Not started yet
 
     // Calculate how many blocks we are behind
@@ -469,8 +517,37 @@ async function verifySolPayment(signature: string, amount: number, wallet: strin
 // API
 // ==========================================
 
+// Get SOL Balance
+app.get("/api/sol-balance/:wallet", async (req, res) => {
+  const { wallet } = req.params;
+  const apiKey = process.env.ALCHEMY_API_KEY;
+  if (!apiKey) {
+    return res.status(500).json({ error: "ALCHEMY_API_KEY not configured" });
+  }
+
+  try {
+    const response = await axios.post(`https://solana-mainnet.g.alchemy.com/v2/${apiKey}`, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getBalance",
+      params: [wallet]
+    });
+    
+    if (response.data.error) {
+      throw new Error(response.data.error.message);
+    }
+    
+    res.json({ balance: response.data.result.value / 1e9 });
+  } catch (err) {
+    console.error("Error fetching SOL balance from Alchemy:", err);
+    res.status(500).json({ error: "Failed to fetch SOL balance" });
+  }
+});
+
 // Status
 app.get("/api/status", (req, res) => {
+  const { adminWallet } = req.query;
+  console.log(`DEBUG: /api/status called`);
   const activeMiners = state.users.filter(u => u.hashpower > 0).length;
   const totalUsers = state.users.length;
   const totalHashpower = state.users.reduce((sum, u) => sum + u.hashpower, 0);
@@ -488,7 +565,7 @@ app.get("/api/status", (req, res) => {
     totalHashpower,
     activeMiners,
     totalUsers,
-    miners: state.users,
+    miners: adminWallet === ADMIN_WALLET ? state.users : [],
   });
 });
 
@@ -507,6 +584,7 @@ app.get("/api/history/:blockId/rewards", async (req, res) => {
 
 // Get User
 app.get("/api/user/:wallet", async (req, res) => {
+  console.log(`DEBUG: /api/user/${req.params.wallet} called`);
   try {
     const user = await getUser(req.params.wallet, req);
     // Fetch history from Firestore for this user
@@ -522,7 +600,7 @@ app.get("/api/user/:wallet", async (req, res) => {
 
     res.json({ ...user, history });
   } catch (err) {
-    console.error("Error fetching user data:", err);
+    console.error(`Error fetching user data for ${req.params.wallet}:`, err);
     res.status(500).json({ error: "Failed to fetch user data" });
   }
 });
@@ -582,7 +660,11 @@ app.post("/api/buy-hashpower", async (req, res) => {
 
 // Manual hashpower
 app.post("/api/set-hashpower", async (req, res) => {
-  const { wallet, hashpower } = req.body;
+  const { wallet, hashpower, adminWallet } = req.body;
+
+  if (adminWallet !== ADMIN_WALLET) {
+    return res.status(403).json({ error: "Unauthorized access. Admin only." });
+  }
 
   const user = await getUser(wallet);
   user.hashpower = hashpower;
@@ -621,6 +703,12 @@ app.get("/api/config", (req, res) => {
 
 // Clear History
 app.post("/api/admin/clear-history", async (req, res) => {
+  const { adminWallet } = req.body;
+
+  if (adminWallet !== ADMIN_WALLET) {
+    return res.status(403).json({ error: "Unauthorized access. Admin only." });
+  }
+
   try {
     console.log("⚠️ Admin requested to clear all history data.");
     

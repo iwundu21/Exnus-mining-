@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, User, Zap, Search, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Miner {
   wallet: string;
+  referralId?: string;
   hashpower: number;
   totalEarned: number;
   lastActive: number;
@@ -20,6 +22,7 @@ const formatWallet = (wallet: string) => {
 };
 
 export default function AdminDashboard() {
+  const { publicKey } = useWallet();
   const [miners, setMiners] = useState<Miner[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,12 +36,15 @@ export default function AdminDashboard() {
   const [clearMessage, setClearMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   useEffect(() => {
-    fetchMiners();
-  }, []);
+    if (publicKey) {
+      fetchMiners();
+    }
+  }, [publicKey]);
 
   const fetchMiners = async () => {
+    if (!publicKey) return;
     try {
-      const res = await axios.get('/api/status', { timeout: 10000 });
+      const res = await axios.get(`/api/status?adminWallet=${publicKey.toString()}`, { timeout: 10000 });
       setMiners(res.data.miners || []);
     } catch (err) {
       console.error('Failed to fetch miners:', err);
@@ -48,10 +54,11 @@ export default function AdminDashboard() {
   };
 
   const handleClearHistory = async () => {
+    if (!publicKey) return;
     setClearingHistory(true);
     setClearMessage(null);
     try {
-      await axios.post('/api/admin/clear-history');
+      await axios.post('/api/admin/clear-history', { adminWallet: publicKey.toString() });
       setClearMessage({ type: 'success', text: 'All history data cleared successfully.' });
       setShowClearConfirm(false);
       fetchMiners(); // Refresh list
@@ -64,7 +71,7 @@ export default function AdminDashboard() {
   };
 
   const handleSetHashpower = async () => {
-    if (!selectedMiner || !newHashpower) return;
+    if (!selectedMiner || !newHashpower || !publicKey) return;
     
     setSubmitting(true);
     setMessage(null);
@@ -72,7 +79,8 @@ export default function AdminDashboard() {
     try {
       const res = await axios.post('/api/set-hashpower', {
         wallet: selectedMiner.wallet,
-        hashpower: parseFloat(newHashpower)
+        hashpower: parseFloat(newHashpower),
+        adminWallet: publicKey.toString()
       });
       
       setMessage({ type: 'success', text: `Successfully set hashpower for ${selectedMiner.wallet.slice(0, 8)}...` });
@@ -135,9 +143,20 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="bg-white/5 border-b border-white/5">
                     <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">Miner Wallet</th>
+                    <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">Ref ID</th>
                     <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">Country</th>
                     <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">Hashpower</th>
-                    <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">SOL Spent</th>
+                    <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">
+                      <div className="flex items-center gap-1">
+                        SOL Spent
+                        <img 
+                          src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafkreihx2yxwcaucavhn7lf55mgi2jqwkf66sj4pmaucthokzgrjty525i" 
+                          alt="SOL" 
+                          className="w-3 h-3 rounded-full"
+                          referrerPolicy="no-referrer"
+                        />
+                      </div>
+                    </th>
                     <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">EXN Balance</th>
                     <th className="p-4 text-[10px] uppercase tracking-widest font-bold text-muted">Actions</th>
                   </tr>
@@ -169,6 +188,9 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td className="p-4">
+                          <span className="text-sm font-mono font-bold text-blue-400">{miner.referralId || '-'}</span>
+                        </td>
+                        <td className="p-4">
                           <div className="flex items-center gap-2">
                             {miner.countryCode && miner.countryCode !== 'UN' ? (
                               <img 
@@ -188,12 +210,28 @@ export default function AdminDashboard() {
                           <span className="text-[10px] text-muted ml-1">TH/s</span>
                         </td>
                         <td className="p-4">
-                          <span className="text-sm font-mono font-bold text-yellow-500/80">{(miner.solSpent || 0).toFixed(2)}</span>
-                          <span className="text-[10px] text-muted ml-1">SOL</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm font-mono font-bold text-yellow-500/80">{(miner.solSpent || 0).toFixed(2)}</span>
+                            <img 
+                              src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafkreihx2yxwcaucavhn7lf55mgi2jqwkf66sj4pmaucthokzgrjty525i" 
+                              alt="SOL" 
+                              className="w-3 h-3 rounded-full"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="text-[10px] text-muted">SOL</span>
+                          </div>
                         </td>
                         <td className="p-4">
-                          <span className="text-sm font-mono font-bold text-green-500">{(miner.totalEarned || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                          <span className="text-[10px] text-muted ml-1">EXN</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm font-mono font-bold text-green-500">{(miner.totalEarned || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                            <img 
+                              src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                              alt="EXN" 
+                              className="w-3 h-3 rounded-full"
+                              referrerPolicy="no-referrer"
+                            />
+                            <span className="text-[10px] text-muted">EXN</span>
+                          </div>
                         </td>
                         <td className="p-4">
                           <button 

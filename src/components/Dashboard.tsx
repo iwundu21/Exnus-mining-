@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import axios from 'axios';
-import { motion } from 'motion/react';
-import { Cpu, Timer, Database, TrendingUp, Users, Wallet } from 'lucide-react';
-import { formatNumber } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
+import { Cpu, Timer, Database, TrendingUp, Users, Wallet, ArrowUp, ArrowDown, Coins } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { formatNumber, cn } from '../lib/utils';
 import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/engine';
 import BuyHashpowerDialog from './BuyHashpowerDialog';
 
@@ -20,10 +21,31 @@ interface Status {
   totalUsers: number;
 }
 
+const AnimatedNumber = ({ value, className }: { value: number, className?: string }) => (
+  <motion.span
+    key={value}
+    initial={{ opacity: 0.7, color: 'var(--primary)' }}
+    animate={{ opacity: 1, color: 'var(--color-text)' }}
+    className={className}
+  >
+    {formatNumber(value)}
+  </motion.span>
+);
+
+const TrendIndicator = ({ trend }: { trend: number }) => (
+  <span className={cn("flex items-center text-[10px] font-bold", trend >= 0 ? "text-green-500" : "text-red-500")}>
+    {trend >= 0 ? <ArrowUp size={10} className="mr-0.5" /> : <ArrowDown size={10} className="mr-0.5" />}
+    {Math.abs(trend).toFixed(2)}%
+  </span>
+);
+
+// ... (rest of the component)
+
 export default function Dashboard() {
   const { publicKey } = useWallet();
   const [status, setStatus] = useState<Status | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
   const [difficulty, setDifficulty] = useState<string>('84.2P');
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
 
@@ -38,26 +60,30 @@ export default function Dashboard() {
 
   const isFetchingRef = useRef(false);
 
-  const fetchData = async () => {
-    if (isFetchingRef.current) return;
+  const fetchData = async (retryCount = 0) => {
+    if (isFetchingRef.current && retryCount === 0) return;
     isFetchingRef.current = true;
     try {
-      const [statusRes, userRes, diffRes] = await Promise.all([
-        axios.get('/api/status', { timeout: 10000 }),
-        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`, { timeout: 10000 }) : Promise.resolve({ data: null }),
-        axios.get('https://blockchain.info/q/getdifficulty', { timeout: 5000 }).catch(() => ({ data: null }))
+      const ref = sessionStorage.getItem('exnus_ref');
+      const userUrl = publicKey ? `/api/user/${publicKey.toBase58()}${ref ? `?ref=${ref}` : ''}` : null;
+      
+      const [statusRes, userRes, diffRes, historyRes] = await Promise.all([
+        axios.get('/api/status', { timeout: 30000 }),
+        userUrl ? axios.get(userUrl, { timeout: 30000 }) : Promise.resolve({ data: null }),
+        axios.get('https://blockchain.info/q/getdifficulty', { timeout: 15000 }).catch(() => ({ data: null })),
+        axios.get('/api/history', { timeout: 15000 })
       ]);
-      console.log("Dashboard: statusRes=", statusRes.data);
+      
       setStatus(prev => {
         if (!prev) return statusRes.data;
         const newStatus = { ...statusRes.data };
-        // Prevent jitter by keeping local countdown if it's close to server's
         if (Math.abs(prev.countdown - newStatus.countdown) <= 2) {
           newStatus.countdown = prev.countdown;
         }
         return newStatus;
       });
       setUser(userRes.data);
+      setHistory(historyRes.data.slice(0, 10).reverse());
 
       if (diffRes && diffRes.data) {
         const diffNum = parseFloat(diffRes.data);
@@ -67,6 +93,9 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error("Dashboard error:", err);
+      if (retryCount < 3) {
+        setTimeout(() => fetchData(retryCount + 1), 2000 * (retryCount + 1));
+      }
     } finally {
       isFetchingRef.current = false;
     }
@@ -78,10 +107,34 @@ export default function Dashboard() {
     return () => clearInterval(interval);
   }, [publicKey]);
 
+  const playTick = () => {
+    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    
+    const playPing = (time: number) => {
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(880, time);
+      gainNode.gain.setValueAtTime(0.1, time);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      oscillator.start(time);
+      oscillator.stop(time + 0.05);
+    };
+
+    // Pattern: titi titi titi, pause, titi titi titi
+    const now = audioCtx.currentTime;
+    [0, 0.1, 0.2, 0.4, 0.5, 0.6].forEach(offset => playPing(now + offset));
+  };
+
   useEffect(() => {
     const timer = setInterval(() => {
       setStatus(prev => {
         if (!prev) return prev;
+        if (prev.countdown > 0) playTick(); // Play sound
         return { ...prev, countdown: Math.max(0, prev.countdown - 1) };
       });
     }, 1000);
@@ -95,6 +148,12 @@ export default function Dashboard() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  const chartData = history.map(block => ({
+    block: `#${block.blockNumber}`,
+    reward: block.reward,
+    share: status?.totalHashpower ? (block.reward / status.totalHashpower) * 100 : 0
+  }));
+
   return (
     <div className="space-y-12">
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -103,7 +162,7 @@ export default function Dashboard() {
             <div className="status-indicator status-online"></div>
             <span className="text-[10px] uppercase font-bold tracking-widest text-green-500">Network Online</span>
           </div>
-          <h2 className="text-3xl md:text-5xl font-bold tracking-tight">EXNUS MINING ENGINE</h2>
+          <h2 className="text-3xl md:text-5xl font-bold tracking-tight">Overview</h2>
         </div>
       </header>
 
@@ -115,9 +174,9 @@ export default function Dashboard() {
           className="data-card"
         >
           <div className="data-value">
-            #{status?.currentBlock || 0}
+            #<AnimatedNumber value={status?.currentBlock || 0} />
           </div>
-          <p className="text-[10px] text-muted">Total Mined: {status?.currentBlock || 0} / {status?.totalBlocks || 0}</p>
+          <p className="text-[10px] text-muted">Total Mined: {formatNumber(status?.currentBlock || 0)} / {formatNumber(status?.totalBlocks || 0)}</p>
         </motion.div>
 
         <motion.div 
@@ -131,10 +190,43 @@ export default function Dashboard() {
               <Timer size={14} />
               <span>Next Reward</span>
             </div>
-            <span className="text-primary font-mono">{status ? formatTime(status.countdown) : '0:00'}</span>
+            <motion.span 
+              className="text-primary font-mono"
+              animate={{ 
+                fontSize: status ? `${1 + (1 - Math.min(status.countdown, 60) / 60) * 1.5}rem` : '1rem',
+                scale: status && status.countdown < 10 ? [1, 1.1, 1] : 1
+              }}
+              transition={{
+                scale: { repeat: Infinity, duration: 0.5 }
+              }}
+            >
+              {status ? formatTime(status.countdown) : '0:00'}
+            </motion.span>
           </div>
-          <div className="data-value text-primary">
-            {formatNumber(status?.blockReward || 0)} <span className="text-xs text-muted">EXN</span>
+          <div className="data-value text-primary flex items-center gap-2">
+            <AnimatedNumber value={status?.blockReward || 0} />
+            <span className="relative group cursor-help flex items-center gap-1 text-xs text-muted">
+              <img 
+                src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                alt="EXN" 
+                className="w-4 h-4 rounded-full"
+                referrerPolicy="no-referrer"
+              />
+              EXN
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-4 bg-black border border-white/10 text-white text-[10px] rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                <div className="flex items-center gap-2 mb-2">
+                  <img 
+                    src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                    alt="EXN" 
+                    className="w-6 h-6 rounded-full"
+                    referrerPolicy="no-referrer"
+                  />
+                  <p className="font-bold text-primary">EXN Token</p>
+                </div>
+                <p className="text-muted mb-2">Total Supply: {formatNumber(TOTAL_SUPPLY)}</p>
+                <p className="leading-relaxed">Exnus (EXN) is the native utility token powering the Exnus Mining Engine, used for network governance and reward distribution.</p>
+              </div>
+            </span>
           </div>
           <p className="text-[10px] text-muted">Block Interval: {BLOCK_INTERVAL / 60}m</p>
         </motion.div>
@@ -145,12 +237,15 @@ export default function Dashboard() {
           transition={{ delay: 0.2 }}
           className="data-card"
         >
-          <div className="flex items-center gap-2 data-label">
-            <Cpu size={14} />
-            <span>Total Hashrate</span>
+          <div className="flex items-center justify-between data-label">
+            <div className="flex items-center gap-2">
+              <Cpu size={14} />
+              <span>Total Hashrate</span>
+            </div>
+            <TrendIndicator trend={1.25} />
           </div>
           <div className="data-value">
-            {formatNumber(status?.totalHashpower || 0)} <span className="text-xs text-muted">TH/s</span>
+            <AnimatedNumber value={status?.totalHashpower || 0} /> <span className="text-xs text-muted">TH/s</span>
           </div>
           <p className="text-[10px] text-muted">Network Difficulty: {difficulty}</p>
         </motion.div>
@@ -161,12 +256,15 @@ export default function Dashboard() {
           transition={{ delay: 0.3 }}
           className="data-card"
         >
-          <div className="flex items-center gap-2 data-label">
-            <Users size={14} />
-            <span>Active Miners</span>
+          <div className="flex items-center justify-between data-label">
+            <div className="flex items-center gap-2">
+              <Users size={14} />
+              <span>Active Miners</span>
+            </div>
+            <TrendIndicator trend={-0.45} />
           </div>
           <div className="data-value">
-            {status?.activeMiners || 0} <span className="text-xs text-muted">/ {status?.totalUsers || 0}</span>
+            <AnimatedNumber value={status?.activeMiners || 0} /> <span className="text-xs text-muted">/ {formatNumber(status?.totalUsers || 0)}</span>
           </div>
           <p className="text-[10px] text-muted">Total Registered Users</p>
         </motion.div>
@@ -176,45 +274,86 @@ export default function Dashboard() {
         {/* Network Distribution Chart Area */}
         <section className="lg:col-span-2 space-y-6">
           <div className="data-card p-8">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="data-label">Network Distribution</h3>
-              <div className="flex gap-4 text-[10px] uppercase font-bold tracking-widest">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                  <span>Distributed</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-white/10 rounded-full"></div>
-                  <span>Remaining</span>
-                </div>
-              </div>
-            </div>
+            <h3 className="data-label mb-8">Network Distribution</h3>
             
-            <div className="space-y-8">
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs font-mono">
-                  <span className="text-muted">Supply Distribution</span>
-                  <span>{((status?.totalDistributed || 0) / ((status?.totalDistributed || 0) + (status?.remainingSupply || 1)) * 100).toFixed(2)}%</span>
+            <div className="space-y-8 mb-12">
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <p className="text-[10px] text-muted uppercase tracking-widest mb-1">Supply Distribution</p>
+                    <div className="flex items-center gap-2">
+                      <img 
+                        src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                        alt="EXN" 
+                        className="w-6 h-6 rounded-full"
+                        referrerPolicy="no-referrer"
+                      />
+                      <p className="text-2xl font-display font-bold">
+                        <AnimatedNumber value={status?.totalDistributed || 0} /> 
+                        <span className="text-xs text-muted ml-2">/ {formatNumber(TOTAL_SUPPLY)} EXN</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-muted uppercase tracking-widest mb-1">Progress</p>
+                    <p className="text-sm font-mono font-bold text-primary">
+                      {((status?.totalDistributed || 0) / TOTAL_SUPPLY * 100).toFixed(2)}%
+                    </p>
+                  </div>
                 </div>
-                <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                <div className="h-3 bg-white/5 rounded-full overflow-hidden border border-white/5 p-0.5">
                   <motion.div 
-                    className="h-full bg-primary"
                     initial={{ width: 0 }}
-                    animate={{ width: `${((status?.totalDistributed || 0) / ((status?.totalDistributed || 0) + (status?.remainingSupply || 1)) * 100)}%` }}
+                    animate={{ width: `${Math.min(100, ((status?.totalDistributed || 0) / TOTAL_SUPPLY) * 100)}%` }}
+                    className="h-full bg-primary rounded-full shadow-[0_0_15px_rgba(var(--primary-rgb),0.5)]"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-2 gap-8 pt-4 border-t border-white/5">
                 <div className="space-y-1">
                   <p className="data-label">Total Distributed</p>
-                  <p className="text-xl font-mono font-bold">{formatNumber(status?.totalDistributed || 0)} EXN</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-xl font-mono font-bold text-green-500">{formatNumber(status?.totalDistributed || 0)}</p>
+                    <img 
+                      src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                      alt="EXN" 
+                      className="w-4 h-4 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="text-[10px] text-muted">EXN</span>
+                  </div>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 text-right">
                   <p className="data-label">Remaining Supply</p>
-                  <p className="text-xl font-mono font-bold">{formatNumber(status?.remainingSupply ?? TOTAL_SUPPLY)} EXN</p>
+                  <div className="flex items-center justify-end gap-1">
+                    <p className="text-xl font-mono font-bold">{formatNumber(TOTAL_SUPPLY - (status?.totalDistributed || 0))}</p>
+                    <img 
+                      src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                      alt="EXN" 
+                      className="w-4 h-4 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="text-[10px] text-muted">EXN</span>
+                  </div>
                 </div>
               </div>
+            </div>
+
+            <h3 className="data-label mb-8">Block Reward Distribution</h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                  <XAxis dataKey="block" stroke="rgba(255,255,255,0.3)" fontSize={10} />
+                  <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#141414', border: '1px solid rgba(255,255,255,0.1)' }}
+                    itemStyle={{ color: '#fff', fontSize: '12px' }}
+                  />
+                  <Line type="monotone" dataKey="reward" stroke="var(--primary)" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </div>
         </section>
@@ -230,11 +369,19 @@ export default function Dashboard() {
               <div className="space-y-2">
                 <p className="data-label text-primary">Your Mining Status</p>
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-                    <TrendingUp className="text-white" />
+                  <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-primary/20 border border-primary/30">
+                    <img 
+                      src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                      alt="EXN Logo" 
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
                   </div>
                   <div>
-                    <h3 className="text-2xl font-display font-bold">{formatNumber(user.totalEarned)} EXN</h3>
+                    <h3 className="text-2xl font-display font-bold flex items-center gap-2">
+                      <AnimatedNumber value={user.totalEarned} /> 
+                      <span className="text-xs text-muted">EXN</span>
+                    </h3>
                     <p className="text-[10px] text-muted uppercase tracking-widest">Total Rewards</p>
                   </div>
                 </div>
@@ -243,23 +390,35 @@ export default function Dashboard() {
               <div className="space-y-4 pt-6">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Current Hashpower</span>
-                  <span className="text-sm font-mono font-bold">{formatNumber(user.hashpower)} TH/s</span>
+                  <span className="text-sm font-mono font-bold"><AnimatedNumber value={user.hashpower} /> TH/s</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Network Share</span>
-                  <span className="text-sm font-mono font-bold">
-                    {status?.totalHashpower ? ((user.hashpower / status.totalHashpower) * 100).toFixed(4) : 0}%
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono font-bold">
+                      {status?.totalHashpower ? ((user.hashpower / status.totalHashpower) * 100).toFixed(4) : 0}%
+                    </span>
+                    <TrendIndicator trend={0.12} />
+                  </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Daily Est.</span>
-                  <span className="text-sm font-mono font-bold text-primary">
-                    ~{formatNumber(
-                      (user.hashpower && status?.totalHashpower && status?.blockReward)
-                        ? (user.hashpower / status.totalHashpower) * status.blockReward * (24 * 60 * 60 / 1200)
-                        : 0
-                    )} EXN
-                  </span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-mono font-bold text-primary">
+                      ~<AnimatedNumber value={
+                        (user.hashpower && status?.totalHashpower && status?.blockReward)
+                          ? (user.hashpower / status.totalHashpower) * status.blockReward * (24 * 60 * 60 / 1200)
+                          : 0
+                      } />
+                    </span>
+                    <img 
+                      src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                      alt="EXN" 
+                      className="w-3 h-3 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="text-[10px] text-muted">EXN</span>
+                  </div>
                 </div>
               </div>
 
@@ -279,7 +438,6 @@ export default function Dashboard() {
                 <h3 className="text-lg font-bold tracking-tight">Connect to Mining Engine</h3>
                 <p className="text-xs text-muted leading-relaxed max-w-[240px] mx-auto">
                   Securely link your Solana wallet to monitor your mining assets and network rewards. 
-                  <span className="block mt-2 text-[10px] text-green-500/80 uppercase tracking-widest font-bold">Read-Only Connection</span>
                 </p>
               </div>
               <div className="space-y-3">

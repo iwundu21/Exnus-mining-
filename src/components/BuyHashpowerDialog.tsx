@@ -220,7 +220,16 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-mono font-bold text-primary">{tier.sol} SOL</p>
+                      <div className="flex items-center justify-end gap-1">
+                        <p className="text-lg font-mono font-bold text-primary">{tier.sol}</p>
+                        <img 
+                          src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafkreihx2yxwcaucavhn7lf55mgi2jqwkf66sj4pmaucthokzgrjty525i" 
+                          alt="SOL" 
+                          className="w-4 h-4 rounded-full"
+                          referrerPolicy="no-referrer"
+                        />
+                        <span className="text-sm font-bold text-primary">SOL</span>
+                      </div>
                       <p className="text-[10px] text-muted uppercase tracking-tighter">One-time payment</p>
                     </div>
                   </button>
