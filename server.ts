@@ -254,14 +254,22 @@ async function processBlock() {
       state.history.unshift(emptyBlockData);
       if (state.history.length > 50) state.history.pop();
     }
-    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(emptyBlockData, ['blockNumber', 'timestamp']));
+    try {
+      await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(emptyBlockData, ['blockNumber', 'timestamp']));
+    } catch (err) {
+      console.error("❌ Firestore Error (history):", err);
+    }
 
     state.lastBlockTimestamp += BLOCK_INTERVAL;
-    await setDoc(doc(db, 'status', 'global'), pack({
-      currentBlock: state.currentBlock,
-      lastBlockTimestamp: state.lastBlockTimestamp,
-      totalDistributed: state.totalDistributed
-    }));
+    try {
+      await setDoc(doc(db, 'status', 'global'), pack({
+        currentBlock: state.currentBlock,
+        lastBlockTimestamp: state.lastBlockTimestamp,
+        totalDistributed: state.totalDistributed
+      }));
+    } catch (err) {
+      console.error("❌ Firestore Error (status):", err);
+    }
     return;
   }
 
@@ -306,18 +314,22 @@ async function processBlock() {
   }
 
     // Persist user update and history record
-    await setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet']));
-    await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(record, ['blockNumber', 'timestamp']));
-    
-    // Store in global history rewards subcollection
-    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`, 'rewards', user.wallet), pack({
-      wallet: user.wallet,
-      reward: reward,
-      hashpower: user.hashpower,
-      timestamp: state.lastBlockTimestamp,
-      blockNumber: state.currentBlock,
-      status: "CONFIRMED"
-    }, ['wallet', 'blockNumber', 'timestamp']));
+    try {
+      await setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet']));
+      await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(record, ['blockNumber', 'timestamp']));
+      
+      // Store in global history rewards subcollection
+      await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`, 'rewards', user.wallet), pack({
+        wallet: user.wallet,
+        reward: reward,
+        hashpower: user.hashpower,
+        timestamp: state.lastBlockTimestamp,
+        blockNumber: state.currentBlock,
+        status: "CONFIRMED"
+      }, ['wallet', 'blockNumber', 'timestamp']));
+    } catch (err) {
+      console.error(`❌ Firestore Error (user ${user.wallet}):`, err);
+    }
 
     console.log(`💰 ${user.wallet} → ${reward.toFixed(4)}`);
   }
@@ -330,16 +342,20 @@ async function processBlock() {
   }
 
   // Persist global history and status
-  await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp']));
-  
-  state.currentBlock++;
-  state.lastBlockTimestamp += BLOCK_INTERVAL;
+  try {
+    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp']));
+    
+    state.currentBlock++;
+    state.lastBlockTimestamp += BLOCK_INTERVAL;
 
-  await setDoc(doc(db, 'status', 'global'), pack({
-    currentBlock: state.currentBlock,
-    lastBlockTimestamp: state.lastBlockTimestamp,
-    totalDistributed: state.totalDistributed
-  }));
+    await setDoc(doc(db, 'status', 'global'), pack({
+      currentBlock: state.currentBlock,
+      lastBlockTimestamp: state.lastBlockTimestamp,
+      totalDistributed: state.totalDistributed
+    }));
+  } catch (err) {
+    console.error("❌ Firestore Error (global):", err);
+  }
 }
 
 // ==========================================
@@ -477,7 +493,26 @@ app.post("/api/buy-hashpower", async (req, res) => {
 
   const user = await getUser(wallet, req);
 
-  const hp = solAmount * HASHPOWER_PER_SOL;
+  // Pricing Tiers
+  // 0.7 hashpower = 0.01 sol
+  // 1 hashpower = 0.04 sol
+  // 1.5 hashpower = 0.057 sol
+  // 2 hashpower = 0.067 sol
+  // 2.5 hashpower = 0.077 sol
+  
+  let hp = 0;
+  const amount = parseFloat(solAmount.toFixed(4));
+  
+  if (amount === 0.01) hp = 0.7;
+  else if (amount === 0.04) hp = 1.0;
+  else if (amount === 0.057) hp = 1.5;
+  else if (amount === 0.067) hp = 2.0;
+  else if (amount === 0.077) hp = 2.5;
+  else {
+    // Fallback to default if not a tier (though UI should prevent this)
+    hp = solAmount * HASHPOWER_PER_SOL;
+  }
+
   user.hashpower += hp;
   user.solSpent = (user.solSpent || 0) + solAmount;
 
@@ -521,6 +556,13 @@ app.get("/api/history", (req, res) => {
     return acc;
   }, []);
   res.json(uniqueHistory);
+});
+
+// Config
+app.get("/api/config", (req, res) => {
+  res.json({
+    treasuryWallet: TREASURY_WALLET
+  });
 });
 
 // ==========================================

@@ -6,6 +6,7 @@ import { motion } from 'motion/react';
 import { Cpu, Timer, Database, TrendingUp, Users, Wallet } from 'lucide-react';
 import { formatNumber } from '../lib/utils';
 import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/engine';
+import BuyHashpowerDialog from './BuyHashpowerDialog';
 
 interface Status {
   currentBlock: number;
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState<Status | null>(null);
   const [user, setUser] = useState<any>(null);
   const [difficulty, setDifficulty] = useState<string>('84.2P');
+  const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
 
   const formatDifficulty = (diff: number) => {
     if (diff >= 1e15) return (diff / 1e15).toFixed(1) + 'P';
@@ -45,15 +47,8 @@ export default function Dashboard() {
       setStatus(prev => {
         if (!prev) return statusRes.data;
         const newStatus = { ...statusRes.data };
-        
-        // If the server just processed a block (countdown reset to high value), 
-        // we should always take the server's value.
-        if (newStatus.countdown > prev.countdown + 10) {
-          return newStatus;
-        }
-
-        // Otherwise, if it's close, keep the local countdown for smoothness
-        if (Math.abs(prev.countdown - newStatus.countdown) <= 3) {
+        // Prevent jitter by keeping local countdown if it's close to server's
+        if (Math.abs(prev.countdown - newStatus.countdown) <= 2) {
           newStatus.countdown = prev.countdown;
         }
         return newStatus;
@@ -262,7 +257,10 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <button className="w-full py-4 bg-primary text-white rounded-xl font-bold text-sm tracking-widest uppercase hover:bg-accent transition-colors">
+              <button 
+                onClick={() => setIsBuyDialogOpen(true)}
+                className="w-full py-4 bg-primary text-white rounded-xl font-bold text-sm tracking-widest uppercase hover:bg-accent transition-colors"
+              >
                 Buy Hashpower
               </button>
             </motion.div>
@@ -286,6 +284,12 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+
+      <BuyHashpowerDialog 
+        isOpen={isBuyDialogOpen} 
+        onClose={() => setIsBuyDialogOpen(false)} 
+        onPurchaseSuccess={fetchData}
+      />
     </div>
   );
 }

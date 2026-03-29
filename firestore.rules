@@ -52,33 +52,23 @@ service cloud.firestore {
 
     // Rules
     match /users/{wallet} {
-      // Users can read their own profile
-      allow read: if true; // Publicly readable for leaderboard/status
+      allow read, write: if true;
       
-      // Only the server (or admin) should write to these
-      // In this app, the Express server handles all writes.
-      // For security, we should ideally use a service account, 
-      // but since we're using the client SDK on the server, 
-      // we'll allow writes if they come from the server's context 
-      // (which we can't easily distinguish here without custom claims).
-      // For now, we'll allow writes to facilitate the demo, 
-      // but in production, these would be locked down.
-      allow write: if true; 
-
-      match /history/{blockId} {
-        allow read: if true;
-        allow write: if true;
+      match /{allSubcollections=**} {
+        allow read, write: if true;
       }
     }
 
-    match /status/global {
-      allow read: if true;
-      allow write: if true;
+    match /status/{document=**} {
+      allow read, write: if true;
     }
 
     match /history/{blockId} {
-      allow read: if true;
-      allow write: if true;
+      allow read, write: if true;
+      
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
     }
   }
 }

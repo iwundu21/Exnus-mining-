@@ -2,13 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
 import { motion } from 'motion/react';
-import { Wallet } from 'lucide-react';
+import { Wallet, Zap } from 'lucide-react';
 import { formatNumber } from '../lib/utils';
+import BuyHashpowerDialog from './BuyHashpowerDialog';
 
 export default function MyAssets() {
   const { publicKey } = useWallet();
   const [user, setUser] = useState<any>(null);
   const [status, setStatus] = useState<any>(null);
+  const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -53,8 +55,15 @@ export default function MyAssets() {
 
   return (
     <div className="space-y-8">
-      <header>
+      <header className="flex justify-between items-end">
         <h2 className="text-3xl font-bold tracking-tight uppercase">My Assets</h2>
+        <button 
+          onClick={() => setIsBuyDialogOpen(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-accent transition-colors shadow-lg shadow-primary/20"
+        >
+          <Zap size={14} />
+          Buy Hashpower
+        </button>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -134,6 +143,12 @@ export default function MyAssets() {
           </table>
         </div>
       </div>
+
+      <BuyHashpowerDialog 
+        isOpen={isBuyDialogOpen} 
+        onClose={() => setIsBuyDialogOpen(false)} 
+        onPurchaseSuccess={fetchData}
+      />
     </div>
   );
 }
