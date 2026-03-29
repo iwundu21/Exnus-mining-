@@ -109,7 +109,7 @@ export default function AdminDashboard() {
             />
           </div>
 
-          <div className="bg-surface/30 border border-white/5 rounded-2xl overflow-hidden">
+          <div className="data-card !p-0 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>

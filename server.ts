@@ -75,9 +75,9 @@ const TOTAL_SUPPLY = 90_000_000;
 const MINING_DAYS = 180;
 
 const TOTAL_BLOCKS = Math.floor((MINING_DAYS * 24 * 60) / 20); // 12,960
-const HASHPOWER_PER_SOL = 1000;
+const HASHPOWER_PER_SOL = 70;
 
-const TREASURY_WALLET = "YOUR_SOL_WALLET";
+const TREASURY_WALLET = "H2bdBhMeNwjekkpsyM2g7pCDuWUxgxADMGh4q8xAnt8J";
 const connection = new Connection("https://api.mainnet-beta.solana.com");
 
 // Fixed start time: 2026-03-29 10:08:10 UTC
@@ -203,6 +203,14 @@ async function getUser(wallet: string, req?: any) {
   }
 
   return user;
+}
+
+async function saveUser(user: any) {
+  try {
+    await setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet']));
+  } catch (e) {
+    console.error(`❌ Firestore Error (saveUser ${user.wallet}):`, e);
+  }
 }
 
 // ==========================================
@@ -411,7 +419,7 @@ async function verifySolPayment(signature: string, amount: number, wallet: strin
         if (
           info.destination === TREASURY_WALLET &&
           info.source === wallet &&
-          info.lamports === amount * 1e9
+          info.lamports === Math.round(amount * 1e9)
         ) {
           state.usedSignatures.add(signature);
           return true;
@@ -511,13 +519,13 @@ app.post("/api/buy-hashpower", async (req, res) => {
   // 2.5 hashpower = 0.077 sol
   
   let hp = 0;
-  const amount = parseFloat(solAmount.toFixed(4));
+  const amount = Math.round(solAmount * 1000) / 1000; // Round to 3 decimal places
   
-  if (amount === 0.01) hp = 0.7;
-  else if (amount === 0.04) hp = 1.0;
-  else if (amount === 0.057) hp = 1.5;
-  else if (amount === 0.067) hp = 2.0;
-  else if (amount === 0.077) hp = 2.5;
+  if (amount <= 0.011 && amount >= 0.009) hp = 0.7;
+  else if (amount <= 0.041 && amount >= 0.039) hp = 1.0;
+  else if (amount <= 0.058 && amount >= 0.056) hp = 1.5;
+  else if (amount <= 0.068 && amount >= 0.066) hp = 2.0;
+  else if (amount <= 0.078 && amount >= 0.076) hp = 2.5;
   else {
     // Fallback to default if not a tier (though UI should prevent this)
     hp = solAmount * HASHPOWER_PER_SOL;
@@ -527,7 +535,7 @@ app.post("/api/buy-hashpower", async (req, res) => {
   user.solSpent = (user.solSpent || 0) + solAmount;
 
   // Persist update
-  await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
+  await saveUser(user);
 
   res.json({
     message: "Hashpower added",
@@ -543,7 +551,7 @@ app.post("/api/set-hashpower", async (req, res) => {
   const user = await getUser(wallet);
   user.hashpower = hashpower;
   
-  await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
+  await saveUser(user);
 
   res.json(user);
 });

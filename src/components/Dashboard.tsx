@@ -169,7 +169,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Network Distribution Chart Area */}
         <section className="lg:col-span-2 space-y-6">
-          <div className="p-8">
+          <div className="data-card p-8">
             <div className="flex justify-between items-center mb-8">
               <h3 className="data-label">Network Distribution</h3>
               <div className="flex gap-4 text-[10px] uppercase font-bold tracking-widest">
@@ -219,7 +219,7 @@ export default function Dashboard() {
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="p-8 space-y-8"
+              className="data-card p-8 space-y-8"
             >
               <div className="space-y-2">
                 <p className="data-label text-primary">Your Mining Status</p>
@@ -265,7 +265,7 @@ export default function Dashboard() {
               </button>
             </motion.div>
           ) : (
-            <div className="p-8 text-center space-y-6">
+            <div className="data-card p-8 text-center space-y-6">
               <div className="w-16 h-16 rounded-full bg-white/5 mx-auto flex items-center justify-center border border-white/10">
                 <Wallet className="text-primary" size={24} />
               </div>

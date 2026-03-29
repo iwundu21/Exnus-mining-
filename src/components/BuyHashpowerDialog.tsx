@@ -55,7 +55,12 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
     try {
       const treasuryPubKey = new PublicKey(treasuryWallet);
       
-      const transaction = new Transaction().add(
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: publicKey,
+      }).add(
         SystemProgram.transfer({
           fromPubkey: publicKey,
           toPubkey: treasuryPubKey,
@@ -66,6 +71,13 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
       const signature = await sendTransaction(transaction, connection);
       
       setStatus('verifying');
+      
+      // Wait for confirmation
+      await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight
+      }, 'confirmed');
       
       // Verify with backend
       const response = await axios.post('/api/buy-hashpower', {
