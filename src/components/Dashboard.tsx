@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Cpu, Timer, Database, TrendingUp, Users, Wallet, ArrowUp, ArrowDown, Coins } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatNumber, cn } from '../lib/utils';
-import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/engine';
+import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/constants';
 import BuyHashpowerDialog from './BuyHashpowerDialog';
 
 interface Status {

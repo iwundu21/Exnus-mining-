@@ -9,6 +9,16 @@ import crypto from "crypto";
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
+import { 
+  BLOCK_INTERVAL, 
+  TOTAL_SUPPLY, 
+  TOTAL_BLOCKS, 
+  HASHPOWER_PER_SOL, 
+  TREASURY_WALLET, 
+  ADMIN_WALLET, 
+  DEFAULT_GENESIS_TIMESTAMP 
+} from "./src/lib/constants";
+
 const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
 console.log(`📦 Loading Firebase config from ${firebaseConfigPath}...`);
 const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
@@ -68,21 +78,12 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 // ==========================================
-// CONFIG
+// CONFIG (Moved to constants.ts)
 // ==========================================
-const BLOCK_INTERVAL = 1200; // 20 minutes
-const TOTAL_SUPPLY = 90_000_000;
-const MINING_DAYS = 180;
-
-const TOTAL_BLOCKS = Math.floor((MINING_DAYS * 24 * 60) / 20); // 12,960
-const HASHPOWER_PER_SOL = 70;
-
-const TREASURY_WALLET = "H2bdBhMeNwjekkpsyM2g7pCDuWUxgxADMGh4q8xAnt8J";
-const ADMIN_WALLET = "9Kqt28pfMVBsBvXYYnYQCT2BZyorAwzbR6dUmgQfsZYW";
 const connection = new Connection("https://solana.llamarpc.com", "confirmed");
 
-// Fixed start time: 2026-03-29 10:08:10 UTC
-let GENESIS_TIMESTAMP = 1774778890; 
+// Fixed start time
+let GENESIS_TIMESTAMP = DEFAULT_GENESIS_TIMESTAMP; 
 
 // ==========================================
 // STATE (Now backed by Firestore)
@@ -136,12 +137,7 @@ async function syncState() {
         });
 
         const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
-        const rawHistory = historySnap.docs.map(d => unpack(d.data()));
-        state.history = rawHistory.reduce((acc: any[], current: any) => {
-          const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
-          if (!exists) acc.push(current);
-          return acc;
-        }, []).slice(0, 50);
+        state.history = historySnap.docs.map(d => unpack(d.data())).slice(0, 50);
       })(),
       timeout
     ]);
@@ -286,7 +282,10 @@ function getBlockReward() {
 // ==========================================
 async function processBlock() {
   if (state.currentBlock === undefined || isNaN(state.currentBlock)) state.currentBlock = 0;
-  if (state.lastBlockTimestamp === undefined || isNaN(state.lastBlockTimestamp)) state.lastBlockTimestamp = GENESIS_TIMESTAMP;
+  
+  // Deterministic timestamp for the block being processed
+  const blockTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
+  state.lastBlockTimestamp = blockTimestamp;
 
   if (state.currentBlock >= TOTAL_BLOCKS) {
     console.log("⛔ Mining finished");
@@ -294,140 +293,85 @@ async function processBlock() {
   }
 
   const blockReward = getBlockReward();
+  const totalHashpower = state.users.reduce((sum, u) => sum + (u.hashpower || 0), 0);
 
-  const totalHashpower = state.users.reduce(
-    (sum, u) => sum + u.hashpower,
-    0
-  );
-
-  if (totalHashpower === 0) {
-    console.log(`[EXNUS ENGINE] Zero network hashpower detected. Block #${state.currentBlock} rewards deferred to maintain economic scarcity. Generating null-hash cryptographic record.`);
-    
-    // Only process users who have some hashpower (though in this block it should be zero)
-    // Actually, if totalHashpower is 0, we don't need to add history to anyone.
-    // We just log the empty block globally.
-
-    const emptyBlockData = {
-      blockNumber: state.currentBlock,
-      timestamp: state.lastBlockTimestamp,
-      reward: 0,
-      totalHashpower: 0,
-      activeMiners: 0,
-      status: "DEFERRED"
-    };
-    
-    const globalExists = state.history.some((h: any) => h.blockNumber === emptyBlockData.blockNumber && h.timestamp === emptyBlockData.timestamp);
-    if (!globalExists) {
-      state.history.unshift(emptyBlockData);
-      if (state.history.length > 50) state.history.pop();
-    }
-    try {
-      await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(emptyBlockData, ['blockNumber', 'timestamp']));
-    } catch (err) {
-      console.error("❌ Firestore Error (history):", err);
-    }
-
-    state.currentBlock++;
-    state.lastBlockTimestamp += BLOCK_INTERVAL;
-    try {
-      await setDoc(doc(db, 'status', 'global'), pack({
-        currentBlock: state.currentBlock,
-        lastBlockTimestamp: state.lastBlockTimestamp,
-        totalDistributed: state.totalDistributed,
-        genesisTimestamp: GENESIS_TIMESTAMP
-      }));
-    } catch (err) {
-      console.error("❌ Firestore Error (status):", err);
-    }
-    return;
-  }
-
-  console.log(`\n⛏ Block #${state.currentBlock}`);
-  console.log(`Reward: ${blockReward.toFixed(4)}`);
-
-  const blockHash = crypto.createHash('sha256').update(`${state.currentBlock}-${state.lastBlockTimestamp}-${totalHashpower}`).digest('hex');
+  const blockHash = crypto.createHash('sha256').update(`${state.currentBlock}-${blockTimestamp}-${totalHashpower}`).digest('hex');
 
   const blockData = {
     blockNumber: state.currentBlock,
-    timestamp: state.lastBlockTimestamp,
+    timestamp: blockTimestamp,
     reward: blockReward,
     totalHashpower: totalHashpower,
     activeMiners: state.users.filter(u => u.hashpower > 0).length,
-    hash: blockHash
+    hash: blockHash,
+    status: totalHashpower === 0 ? "DEFERRED" : "CONFIRMED"
   };
+
+  console.log(`⛏ Block #${state.currentBlock} | Reward: ${blockReward.toFixed(4)} | Hashpower: ${totalHashpower}`);
 
   // Update only users with active hashpower
   const activeUsers = state.users.filter(u => u.hashpower > 0);
   
-  for (const user of activeUsers) {
-    const reward = (user.hashpower / totalHashpower) * blockReward;
-    fs.appendFileSync(path.join(process.cwd(), 'debug.log'), `[${new Date().toISOString()}] User ${user.wallet}: hashpower=${user.hashpower}, totalHashpower=${totalHashpower}, blockReward=${blockReward}, reward=${reward}\n`);
+  if (totalHashpower > 0) {
+    for (const user of activeUsers) {
+      const reward = (user.hashpower / totalHashpower) * blockReward;
+      user.totalEarned += reward;
+      state.totalDistributed += reward;
 
-    user.totalEarned += reward;
-    state.totalDistributed += reward;
-
-  const rewardHash = crypto.createHash('sha256').update(`${state.currentBlock}-${state.lastBlockTimestamp}-${user.wallet}-${reward}`).digest('hex');
-
-  const record = {
-    blockNumber: state.currentBlock,
-    reward: reward,
-    timestamp: state.lastBlockTimestamp,
-    hashpower: user.hashpower,
-    hash: blockHash,
-    rewardHash: rewardHash
-  };
-
-  if (!user.history) user.history = [];
-  
-  // Check for duplicate before unshifting
-  const exists = user.history.some((h: any) => h.blockNumber === record.blockNumber && h.timestamp === record.timestamp);
-  if (!exists) {
-    user.history.unshift(record);
-    if (user.history.length > 20) user.history.pop();
-  }
-
-    // Persist user update and history record
-    try {
-      await setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet']));
-      await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(record, ['blockNumber', 'timestamp']));
-      
-      // Store in global history rewards subcollection
-      await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`, 'rewards', user.wallet), pack({
-        wallet: user.wallet,
-        reward: reward,
-        hashpower: user.hashpower,
-        timestamp: state.lastBlockTimestamp,
+      const rewardHash = crypto.createHash('sha256').update(`${state.currentBlock}-${blockTimestamp}-${user.wallet}-${reward}`).digest('hex');
+      const record = {
         blockNumber: state.currentBlock,
-        status: "CONFIRMED",
+        reward: reward,
+        timestamp: blockTimestamp,
+        hashpower: user.hashpower,
+        hash: blockHash,
         rewardHash: rewardHash
-      }, ['wallet', 'blockNumber', 'timestamp']));
-    } catch (err) {
-      console.error(`❌ Firestore Error (user ${user.wallet}):`, err);
+      };
+
+      if (!user.history) user.history = [];
+      user.history.unshift(record);
+      if (user.history.length > 20) user.history.pop();
+
+      // Persist user update and history record
+      try {
+        await Promise.all([
+          setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet'])),
+          setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${blockTimestamp}`), pack(record, ['blockNumber', 'timestamp'])),
+          setDoc(doc(db, 'history', `${state.currentBlock}-${blockTimestamp}`, 'rewards', user.wallet), pack({
+            wallet: user.wallet,
+            reward: reward,
+            hashpower: user.hashpower,
+            timestamp: blockTimestamp,
+            blockNumber: state.currentBlock,
+            status: "CONFIRMED",
+            rewardHash: rewardHash
+          }, ['wallet', 'blockNumber', 'timestamp']))
+        ]);
+      } catch (err) {
+        console.error(`❌ Firestore Error (user ${user.wallet}):`, err);
+      }
     }
-
-    console.log(`💰 ${user.wallet} → ${reward.toFixed(4)}`);
   }
 
-  // Check for duplicate in global history
-  const globalExists = state.history.some((h: any) => h.blockNumber === blockData.blockNumber && h.timestamp === blockData.timestamp);
-  if (!globalExists) {
-    state.history.unshift(blockData);
-    if (state.history.length > 50) state.history.pop();
-  }
+  // Update global history
+  state.history.unshift(blockData);
+  if (state.history.length > 50) state.history.pop();
+
+  // Increment block BEFORE persisting status
+  state.currentBlock++;
+  const nextBlockTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
 
   // Persist global history and status
   try {
-    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp']));
-    
-    state.currentBlock++;
-    state.lastBlockTimestamp += BLOCK_INTERVAL;
-
-    await setDoc(doc(db, 'status', 'global'), pack({
-      currentBlock: state.currentBlock,
-      lastBlockTimestamp: state.lastBlockTimestamp,
-      totalDistributed: state.totalDistributed,
-      genesisTimestamp: GENESIS_TIMESTAMP
-    }));
+    await Promise.all([
+      setDoc(doc(db, 'history', `${blockData.blockNumber}-${blockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp'])),
+      setDoc(doc(db, 'status', 'global'), pack({
+        currentBlock: state.currentBlock,
+        lastBlockTimestamp: blockTimestamp, // This is the timestamp of the block just mined
+        totalDistributed: state.totalDistributed,
+        genesisTimestamp: GENESIS_TIMESTAMP
+      }))
+    ]);
   } catch (err) {
     console.error("❌ Firestore Error (global):", err);
   }
@@ -441,21 +385,22 @@ async function checkBlocks() {
   if (isChecking) return;
   isChecking = true;
   try {
-    const diff = now() - state.lastBlockTimestamp;
-    fs.appendFileSync(path.join(process.cwd(), 'debug.log'), `[${new Date().toISOString()}] checkBlocks: now=${now()}, lastBlockTimestamp=${state.lastBlockTimestamp}, diff=${diff}\n`);
-    if (diff < 0) return; // Not started yet
-
-    // Calculate how many blocks we are behind
-    const blocksBehind = Math.floor(diff / BLOCK_INTERVAL);
-
-    if (blocksBehind > 0) {
-      console.log(`[EXNUS ENGINE] Catching up ${blocksBehind} blocks...`);
-      // Limit catch-up to prevent overwhelming
-      const toProcess = Math.min(blocksBehind, 10);
-      for (let i = 0; i < toProcess; i++) {
-        await processBlock();
+    const currentTime = now();
+    // Deterministic target block calculation based on time elapsed since genesis
+    const targetBlock = Math.floor((currentTime - GENESIS_TIMESTAMP) / BLOCK_INTERVAL);
+    
+    // If currentBlock is behind targetBlock, mine the missed blocks
+    if (state.currentBlock <= targetBlock) {
+      const blocksToMine = Math.min(targetBlock - state.currentBlock + 1, 10); // Max 10 at a time
+      if (blocksToMine > 0) {
+        console.log(`[EXNUS ENGINE] Catching up: current=${state.currentBlock}, target=${targetBlock}, mining=${blocksToMine}`);
+        for (let i = 0; i < blocksToMine; i++) {
+          await processBlock();
+        }
       }
     }
+  } catch (err) {
+    console.error("❌ Error in checkBlocks:", err);
   } finally {
     isChecking = false;
   }
@@ -703,13 +648,7 @@ app.get("/api/leaderboard", (req, res) => {
 
 // History
 app.get("/api/history", (req, res) => {
-  // Deduplicate global history
-  const uniqueHistory = state.history.reduce((acc: any[], current: any) => {
-    const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
-    if (!exists) acc.push(current);
-    return acc;
-  }, []);
-  res.json(uniqueHistory);
+  res.json(state.history);
 });
 
 // Config
