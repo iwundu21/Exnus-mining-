@@ -19,8 +19,8 @@ const HASHPOWER_PER_SOL = 1000;
 const TREASURY_WALLET = "YOUR_SOL_WALLET";
 const connection = new Connection("https://api.mainnet-beta.solana.com");
 
-// Fixed start time: 2026-03-28 20:00:00 UTC
-const GENESIS_TIMESTAMP = 1774728000; 
+// Fixed start time: 2026-03-28 21:30:00 UTC
+const GENESIS_TIMESTAMP = 1774733400; 
 
 // ==========================================
 // STATE
@@ -31,6 +31,7 @@ let state = {
   totalDistributed: 0,
   users: [] as any[],
   usedSignatures: new Set<string>(), // prevent replay
+  history: [] as any[], // store block history
 };
 
 // ==========================================
@@ -42,6 +43,9 @@ function now() {
 
 function getCountdown() {
   const elapsed = now() - state.lastBlockTimestamp;
+  if (elapsed < 0) {
+    return Math.abs(elapsed);
+  }
   return BLOCK_INTERVAL - (elapsed % BLOCK_INTERVAL);
 }
 
@@ -52,7 +56,7 @@ function getUser(wallet: string) {
   let user = state.users.find((u) => u.wallet === wallet);
 
   if (!user) {
-    user = { wallet, hashpower: 0, totalEarned: 0 };
+    user = { wallet, hashpower: 0, totalEarned: 0, history: [] };
     state.users.push(user);
   }
 
@@ -87,27 +91,43 @@ function processBlock() {
     0
   );
 
-  if (totalHashpower === 0) {
-    console.log("No miners...");
-    state.currentBlock++;
-    state.lastBlockTimestamp += BLOCK_INTERVAL;
-    return;
-  }
-
   console.log(`\n⛏ Block #${state.currentBlock}`);
   console.log(`Reward: ${blockReward.toFixed(4)}`);
 
   state.users.forEach((user) => {
-    const reward =
-      (user.hashpower / totalHashpower) * blockReward;
+    const reward = totalHashpower > 0 ? (user.hashpower / totalHashpower) * blockReward : 0;
 
     user.totalEarned += reward;
     state.totalDistributed += reward;
+
+    if (!user.history) user.history = [];
+    user.history.unshift({
+      blockNumber: state.currentBlock,
+      reward: reward,
+      timestamp: state.lastBlockTimestamp,
+      hashpower: user.hashpower
+    });
+
+    // Keep last 20 user history items
+    if (user.history.length > 20) user.history.pop();
 
     console.log(
       `💰 ${user.wallet} → ${reward.toFixed(4)}`
     );
   });
+
+  state.history.unshift({
+    blockNumber: state.currentBlock,
+    timestamp: state.lastBlockTimestamp,
+    reward: blockReward,
+    totalHashpower: totalHashpower,
+    activeMiners: state.users.filter(u => u.hashpower > 0).length,
+  });
+
+  // Keep only the last 50 blocks in history to prevent memory leak
+  if (state.history.length > 50) {
+    state.history.pop();
+  }
 
   state.currentBlock++;
   state.lastBlockTimestamp += BLOCK_INTERVAL;
@@ -118,6 +138,8 @@ function processBlock() {
 // ==========================================
 function checkBlocks() {
   const diff = now() - state.lastBlockTimestamp;
+  if (diff < 0) return; // Not started yet
+
   const blocks = Math.floor(diff / BLOCK_INTERVAL);
 
   for (let i = 0; i < blocks; i++) {
@@ -172,6 +194,7 @@ async function verifySolPayment(signature: string, amount: number, wallet: strin
 // Status
 app.get("/api/status", (req, res) => {
   const activeMiners = state.users.filter(u => u.hashpower > 0).length;
+  const totalUsers = state.users.length;
   const totalHashpower = state.users.reduce((sum, u) => sum + u.hashpower, 0);
   
   res.json({
@@ -183,6 +206,7 @@ app.get("/api/status", (req, res) => {
     remainingSupply: TOTAL_SUPPLY - state.totalDistributed,
     totalHashpower,
     activeMiners,
+    totalUsers,
     miners: state.users,
   });
 });
@@ -240,6 +264,11 @@ app.get("/api/leaderboard", (req, res) => {
   );
 
   res.json(sorted);
+});
+
+// History
+app.get("/api/history", (req, res) => {
+  res.json(state.history);
 });
 
 // ==========================================

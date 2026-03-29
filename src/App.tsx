@@ -85,7 +85,7 @@ export default function App() {
             <div className="app-container">
               {/* Desktop Sidebar */}
               <aside className="sidebar">
-                <div className="p-6 border-b border-line">
+                <div className="p-6">
                   <div className="flex items-center gap-2">
                     <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                       <Cpu className="text-white" size={18} />
@@ -121,13 +121,13 @@ export default function App() {
                   </button>
                 </nav>
 
-                <div className="p-6 border-t border-line">
+                <div className="p-6">
                   <WalletMultiButton className="!bg-primary !w-full !rounded-lg !h-10 !text-sm !font-medium" />
                 </div>
               </aside>
 
               {/* Mobile Header */}
-              <header className="md:hidden p-4 border-b border-line flex justify-between items-center bg-surface/50 backdrop-blur-md sticky top-0 z-40">
+              <header className="md:hidden p-4 flex justify-between items-center bg-surface/50 backdrop-blur-md sticky top-0 z-40">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-primary rounded flex items-center justify-center">
                     <Cpu className="text-white" size={14} />

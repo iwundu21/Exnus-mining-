@@ -6,8 +6,8 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   
-  --color-background: #0B0B0B;
-  --color-surface: #141414;
+  --color-background: #0a0002;
+  --color-surface: #140005;
   --color-primary: #4B0F1A;
   --color-accent: #5A0F1F;
   --color-text: #FFFFFF;
@@ -17,7 +17,9 @@
 
 @layer base {
   body {
-    @apply bg-background text-text font-sans antialiased overflow-x-hidden;
+    @apply text-text font-sans antialiased overflow-x-hidden min-h-screen;
+    background: radial-gradient(circle at 50% 0%, #2B0510 0%, #0a0002 50%, #000000 100%);
+    background-attachment: fixed;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -41,11 +43,11 @@
 }
 
 .sidebar {
-  @apply hidden md:flex flex-col w-64 border-r border-line bg-surface/50 backdrop-blur-xl h-screen sticky top-0;
+  @apply hidden md:flex flex-col w-64 bg-transparent h-screen sticky top-0;
 }
 
 .mobile-nav {
-  @apply md:hidden fixed bottom-0 left-0 right-0 bg-surface/80 backdrop-blur-md border-t border-line flex justify-around items-center py-3 z-50;
+  @apply md:hidden fixed bottom-0 left-0 right-0 bg-background flex justify-around items-center py-3 z-50;
 }
 
 .nav-item {
@@ -54,7 +56,7 @@
 }
 
 .nav-item.active {
-  @apply text-text bg-primary/10 border-r-2 border-primary md:border-r-4;
+  @apply text-text bg-primary/10;
 }
 
 .nav-item svg {
@@ -66,11 +68,11 @@
 }
 
 .data-grid {
-  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-px bg-line border border-line;
+  @apply grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4;
 }
 
 .data-card {
-  @apply bg-background p-6 space-y-2;
+  @apply bg-transparent p-6 space-y-2;
 }
 
 .data-value {

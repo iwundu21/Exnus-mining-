@@ -16,22 +16,49 @@ interface Status {
   remainingSupply: number;
   totalHashpower: number;
   activeMiners: number;
+  totalUsers: number;
 }
 
 export default function Dashboard() {
   const { publicKey } = useWallet();
   const [status, setStatus] = useState<Status | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [difficulty, setDifficulty] = useState<string>('84.2P');
+
+  const formatDifficulty = (diff: number) => {
+    if (diff >= 1e15) return (diff / 1e15).toFixed(1) + 'P';
+    if (diff >= 1e12) return (diff / 1e12).toFixed(1) + 'T';
+    if (diff >= 1e9) return (diff / 1e9).toFixed(1) + 'G';
+    if (diff >= 1e6) return (diff / 1e6).toFixed(1) + 'M';
+    if (diff >= 1e3) return (diff / 1e3).toFixed(1) + 'K';
+    return diff.toFixed(1);
+  };
 
   const fetchData = async () => {
     try {
-      const [statusRes, userRes] = await Promise.all([
+      const [statusRes, userRes, diffRes] = await Promise.all([
         axios.get('/api/status'),
-        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`) : Promise.resolve({ data: null })
+        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`) : Promise.resolve({ data: null }),
+        axios.get('https://blockchain.info/q/getdifficulty').catch(() => ({ data: null }))
       ]);
       console.log("Dashboard: statusRes=", statusRes.data);
-      setStatus(statusRes.data);
+      setStatus(prev => {
+        if (!prev) return statusRes.data;
+        const newStatus = { ...statusRes.data };
+        // Prevent jitter by keeping local countdown if it's close to server's
+        if (Math.abs(prev.countdown - newStatus.countdown) <= 2) {
+          newStatus.countdown = prev.countdown;
+        }
+        return newStatus;
+      });
       setUser(userRes.data);
+
+      if (diffRes && diffRes.data) {
+        const diffNum = parseFloat(diffRes.data);
+        if (!isNaN(diffNum)) {
+          setDifficulty(formatDifficulty(diffNum));
+        }
+      }
     } catch (err) {
       console.error("Dashboard error:", err);
     }
@@ -69,9 +96,6 @@ export default function Dashboard() {
             <span className="text-[10px] uppercase font-bold tracking-widest text-green-500">Network Online</span>
           </div>
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight">EXNUS MINING ENGINE</h2>
-          <p className="text-muted text-sm md:text-base max-w-2xl mt-2">
-            The next generation of decentralized hashpower distribution. Connect your wallet to start contributing to the network and earn EXN rewards.
-          </p>
         </div>
       </header>
 
@@ -80,23 +104,19 @@ export default function Dashboard() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="data-card border-r border-line"
+          className="data-card"
         >
-          <div className="flex items-center gap-2 data-label">
-            <Database size={14} />
-            <span>Current Block</span>
-          </div>
           <div className="data-value">
             #{status?.currentBlock || 0}
           </div>
-          <p className="text-[10px] text-muted">Total: {status?.totalBlocks || 0}</p>
+          <p className="text-[10px] text-muted">Total Mined: {status?.currentBlock || 0} / {status?.totalBlocks || 0}</p>
         </motion.div>
 
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="data-card border-r border-line"
+          className="data-card"
         >
           <div className="flex items-center justify-between data-label">
             <div className="flex items-center gap-2">
@@ -115,7 +135,7 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="data-card border-r border-line"
+          className="data-card"
         >
           <div className="flex items-center gap-2 data-label">
             <Cpu size={14} />
@@ -124,7 +144,7 @@ export default function Dashboard() {
           <div className="data-value">
             {formatNumber(status?.totalHashpower || 0)} <span className="text-xs text-muted">TH/s</span>
           </div>
-          <p className="text-[10px] text-muted">Network Difficulty: 84.2P</p>
+          <p className="text-[10px] text-muted">Network Difficulty: {difficulty}</p>
         </motion.div>
 
         <motion.div 
@@ -135,19 +155,19 @@ export default function Dashboard() {
         >
           <div className="flex items-center gap-2 data-label">
             <Users size={14} />
-            <span>Active Nodes</span>
+            <span>Active Miners</span>
           </div>
           <div className="data-value">
-            {status?.activeMiners || 0}
+            {status?.activeMiners || 0} <span className="text-xs text-muted">/ {status?.totalUsers || 0}</span>
           </div>
-          <p className="text-[10px] text-muted">Global Distribution</p>
+          <p className="text-[10px] text-muted">Total Registered Users</p>
         </motion.div>
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Network Distribution Chart Area */}
         <section className="lg:col-span-2 space-y-6">
-          <div className="p-8 border border-line bg-surface/30 rounded-2xl">
+          <div className="p-8">
             <div className="flex justify-between items-center mb-8">
               <h3 className="data-label">Network Distribution</h3>
               <div className="flex gap-4 text-[10px] uppercase font-bold tracking-widest">
@@ -197,7 +217,7 @@ export default function Dashboard() {
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="p-8 bg-primary/10 border border-primary/20 rounded-2xl space-y-8"
+              className="p-8 space-y-8"
             >
               <div className="space-y-2">
                 <p className="data-label text-primary">Your Mining Status</p>
@@ -212,18 +232,26 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-4 pt-6 border-t border-primary/10">
+              <div className="space-y-4 pt-6">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Current Hashpower</span>
                   <span className="text-sm font-mono font-bold">{formatNumber(user.hashpower)} TH/s</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Network Share</span>
-                  <span className="text-sm font-mono font-bold">0.0042%</span>
+                  <span className="text-sm font-mono font-bold">
+                    {status?.totalHashpower ? ((user.hashpower / status.totalHashpower) * 100).toFixed(4) : 0}%
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Daily Est.</span>
-                  <span className="text-sm font-mono font-bold text-primary">~12.4 EXN</span>
+                  <span className="text-sm font-mono font-bold text-primary">
+                    ~{formatNumber(
+                      (user.hashpower && status?.totalHashpower && status?.blockReward)
+                        ? (user.hashpower / status.totalHashpower) * status.blockReward * (24 * 60 * 60 / 1200)
+                        : 0
+                    )} EXN
+                  </span>
                 </div>
               </div>
 
@@ -232,7 +260,7 @@ export default function Dashboard() {
               </button>
             </motion.div>
           ) : (
-            <div className="p-8 border border-dashed border-line rounded-2xl text-center space-y-4">
+            <div className="p-8 text-center space-y-4">
               <div className="w-12 h-12 rounded-full bg-white/5 mx-auto flex items-center justify-center">
                 <Wallet className="text-muted" size={20} />
               </div>

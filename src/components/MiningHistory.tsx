@@ -11,7 +11,11 @@ export default function MiningHistory() {
   const fetchHistory = async () => {
     try {
       const res = await axios.get('/api/history');
-      setHistory(res.data);
+      if (Array.isArray(res.data)) {
+        setHistory(res.data);
+      } else {
+        console.error("Expected array for history, got:", res.data);
+      }
     } catch (err) {
       console.error(err);
     }
@@ -32,14 +36,14 @@ export default function MiningHistory() {
             Real-time ledger of block distributions and network rewards. Monitor the heartbeat of the Exnus Mining Engine.
           </p>
         </div>
-        <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 border border-primary/20 rounded-full">
+        <div className="flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full">
           <div className="status-indicator status-online"></div>
           <span className="text-[10px] uppercase font-bold tracking-widest text-primary">Live Updates Enabled</span>
         </div>
       </header>
 
-      <section className="border border-line rounded-3xl overflow-hidden bg-surface/30">
-        <div className="grid grid-cols-4 md:grid-cols-6 gap-4 p-6 border-b border-line bg-background/50 data-label">
+      <section>
+        <div className="grid grid-cols-4 md:grid-cols-6 gap-4 p-6 data-label">
           <div className="col-span-1">Block</div>
           <div className="hidden md:block">Timestamp</div>
           <div className="col-span-1">Reward</div>
@@ -48,7 +52,7 @@ export default function MiningHistory() {
           <div className="text-right">Status</div>
         </div>
 
-        <div className="divide-y divide-line">
+        <div className="space-y-2">
           {history.length === 0 ? (
             <div className="p-20 text-center opacity-20">
               <HistoryIcon size={48} className="mx-auto mb-4" />
@@ -82,11 +86,11 @@ export default function MiningHistory() {
                 </div>
 
                 <div className="hidden md:block font-mono text-sm text-muted">
-                  {Math.floor(Math.random() * 50) + 100}
+                  {block.activeMiners || 0}
                 </div>
 
                 <div className="text-right">
-                  <span className="px-2 py-1 bg-green-500/10 text-green-500 text-[10px] font-bold uppercase tracking-widest rounded border border-green-500/20">
+                  <span className="px-2 py-1 bg-green-500/10 text-green-500 text-[10px] font-bold uppercase tracking-widest rounded">
                     Confirmed
                   </span>
                 </div>
@@ -98,7 +102,7 @@ export default function MiningHistory() {
 
       {/* Pagination / Load More Placeholder */}
       <div className="flex justify-center pt-8">
-        <button className="px-8 py-3 border border-line rounded-full text-xs font-bold uppercase tracking-widest text-muted hover:text-text hover:border-text transition-all">
+        <button className="px-8 py-3 rounded-full text-xs font-bold uppercase tracking-widest text-muted hover:text-text hover:bg-white/5 transition-all">
           Load Older Blocks
         </button>
       </div>
