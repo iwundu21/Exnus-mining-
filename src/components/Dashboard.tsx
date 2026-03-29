@@ -211,18 +211,9 @@ export default function Dashboard() {
               <Timer size={14} />
               <span>Next Reward</span>
             </div>
-            <motion.span 
-              className="text-primary font-mono"
-              animate={{ 
-                fontSize: status ? `${1 + (1 - Math.min(status.countdown, 60) / 60) * 1.5}rem` : '1rem',
-                scale: status && status.countdown < 10 ? [1, 1.1, 1] : 1
-              }}
-              transition={{
-                scale: { repeat: Infinity, duration: 0.5 }
-              }}
-            >
+            <span className="text-primary font-mono text-xl">
               {status ? formatTime(status.countdown) : '0:00'}
-            </motion.span>
+            </span>
           </div>
           <div className="data-value text-primary flex items-center gap-2">
             <AnimatedNumber value={status?.blockReward || 0} />
