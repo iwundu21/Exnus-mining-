@@ -121,8 +121,19 @@ export default function App() {
                   </button>
                 </nav>
 
-                <div className="p-6">
-                  <WalletMultiButton className="!bg-primary !w-full !rounded-lg !h-10 !text-sm !font-medium" />
+                <div className="p-6 space-y-4">
+                  <div className="space-y-2">
+                    <WalletMultiButton className="!bg-primary !w-full !rounded-lg !h-10 !text-sm !font-medium" />
+                    <div className="flex items-center justify-center gap-1.5 text-[9px] text-muted uppercase tracking-widest">
+                      <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></div>
+                      <span>Secure Read-Only Access</span>
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t border-white/5">
+                    <p className="text-[8px] text-muted uppercase tracking-widest leading-relaxed text-center">
+                      Exnus uses read-only connection. We never access your private keys or funds.
+                    </p>
+                  </div>
                 </div>
               </aside>
 
@@ -134,7 +145,10 @@ export default function App() {
                   </div>
                   <h1 className="text-sm font-bold tracking-tight">EXNUS</h1>
                 </div>
-                <WalletMultiButton className="!bg-primary !rounded-lg !h-8 !px-3 !text-[10px] !min-w-0" />
+                <div className="flex flex-col items-end gap-1">
+                  <WalletMultiButton className="!bg-primary !rounded-lg !h-8 !px-3 !text-[10px] !min-w-0" />
+                  <span className="text-[8px] text-muted uppercase tracking-tighter">Secure Link</span>
+                </div>
               </header>
 
               {/* Main Content Area */}

@@ -2,9 +2,11 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { Connection } from "@solana/web3.js";
 import path from "path";
+import fs from "fs";
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc } from 'firebase/firestore';
-import firebaseConfig from './firebase-applet-config.json';
+
+const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf-8'));
 
 const app = express();
 app.use(express.json());

@@ -260,15 +260,21 @@ export default function Dashboard() {
               </button>
             </motion.div>
           ) : (
-            <div className="p-8 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-white/5 mx-auto flex items-center justify-center">
-                <Wallet className="text-muted" size={20} />
+            <div className="p-8 text-center space-y-6">
+              <div className="w-16 h-16 rounded-full bg-white/5 mx-auto flex items-center justify-center border border-white/10">
+                <Wallet className="text-primary" size={24} />
               </div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold">Wallet Not Connected</p>
-                <p className="text-xs text-muted">Connect your Solana wallet to view your mining statistics and assets.</p>
+              <div className="space-y-2">
+                <h3 className="text-lg font-bold tracking-tight">Connect to Mining Engine</h3>
+                <p className="text-xs text-muted leading-relaxed max-w-[240px] mx-auto">
+                  Securely link your Solana wallet to monitor your mining assets and network rewards. 
+                  <span className="block mt-2 text-[10px] text-green-500/80 uppercase tracking-widest font-bold">Read-Only Connection</span>
+                </p>
               </div>
-              <WalletMultiButton className="!bg-primary !w-full !rounded-xl !h-12 !text-sm !font-bold !uppercase !tracking-widest" />
+              <div className="space-y-3">
+                <WalletMultiButton className="!bg-primary !w-full !rounded-xl !h-12 !text-sm !font-bold !uppercase !tracking-widest !transition-all hover:!bg-accent" />
+                <p className="text-[9px] text-muted uppercase tracking-tighter">No transaction required to connect</p>
+              </div>
             </div>
           )}
         </section>
