@@ -7,7 +7,7 @@ import fs from "fs";
 import axios from "axios";
 import crypto from "crypto";
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
 console.log(`📦 Loading Firebase config from ${firebaseConfigPath}...`);
@@ -80,8 +80,8 @@ const HASHPOWER_PER_SOL = 1000;
 const TREASURY_WALLET = "YOUR_SOL_WALLET";
 const connection = new Connection("https://api.mainnet-beta.solana.com");
 
-// Fixed start time: 2026-03-28 21:30:00 UTC
-const GENESIS_TIMESTAMP = 1774733400; 
+// Fixed start time: 2026-03-29 10:08:10 UTC
+const GENESIS_TIMESTAMP = 1774778890; 
 
 // ==========================================
 // STATE (Now backed by Firestore)
@@ -106,9 +106,9 @@ async function syncState() {
         const statusDoc = await getDoc(doc(db, 'status', 'global'));
         if (statusDoc.exists()) {
           const data = unpack(statusDoc.data());
-          state.currentBlock = data.currentBlock || 0;
-          state.lastBlockTimestamp = data.lastBlockTimestamp || GENESIS_TIMESTAMP;
-          state.totalDistributed = data.totalDistributed || 0;
+          state.currentBlock = Number(data.currentBlock) || 0;
+          state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
+          state.totalDistributed = Number(data.totalDistributed) || 0;
           
           const expectedTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
           if (Math.abs(state.lastBlockTimestamp - expectedTimestamp) > BLOCK_INTERVAL) {
@@ -221,6 +221,9 @@ function getBlockReward() {
 // REWARD DISTRIBUTION
 // ==========================================
 async function processBlock() {
+  if (state.currentBlock === undefined || isNaN(state.currentBlock)) state.currentBlock = 0;
+  if (state.lastBlockTimestamp === undefined || isNaN(state.lastBlockTimestamp)) state.lastBlockTimestamp = GENESIS_TIMESTAMP;
+
   if (state.currentBlock >= TOTAL_BLOCKS) {
     console.log("⛔ Mining finished");
     return;
@@ -260,6 +263,7 @@ async function processBlock() {
       console.error("❌ Firestore Error (history):", err);
     }
 
+    state.currentBlock++;
     state.lastBlockTimestamp += BLOCK_INTERVAL;
     try {
       await setDoc(doc(db, 'status', 'global'), pack({
@@ -361,23 +365,29 @@ async function processBlock() {
 // ==========================================
 // AUTO ENGINE
 // ==========================================
+let isChecking = false;
 async function checkBlocks() {
-  const diff = now() - state.lastBlockTimestamp;
-  if (diff < 0) return; // Not started yet
+  if (isChecking) return;
+  isChecking = true;
+  try {
+    const diff = now() - state.lastBlockTimestamp;
+    if (diff < 0) return; // Not started yet
 
-  // Calculate how many blocks we are behind
-  const blocksBehind = Math.floor(diff / BLOCK_INTERVAL);
+    // Calculate how many blocks we are behind
+    const blocksBehind = Math.floor(diff / BLOCK_INTERVAL);
 
-  if (blocksBehind > 0) {
-    console.log(`[EXNUS ENGINE] Catching up ${blocksBehind} blocks...`);
-    for (let i = 0; i < blocksBehind; i++) {
-      await processBlock();
+    if (blocksBehind > 0) {
+      console.log(`[EXNUS ENGINE] Catching up ${blocksBehind} blocks...`);
+      // Limit catch-up to prevent overwhelming
+      const toProcess = Math.min(blocksBehind, 10);
+      for (let i = 0; i < toProcess; i++) {
+        await processBlock();
+      }
     }
+  } finally {
+    isChecking = false;
   }
 }
-
-checkBlocks(); // Run immediately on startup
-setInterval(checkBlocks, 5000);
 
 // ==========================================
 // VERIFY SOL PAYMENT

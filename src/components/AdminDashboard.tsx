@@ -13,6 +13,12 @@ interface Miner {
   countryCode?: string;
 }
 
+const formatWallet = (wallet: string) => {
+  if (!wallet) return '';
+  if (wallet.length <= 10) return wallet;
+  return `${wallet.slice(0, 5)}****${wallet.slice(-6)}`;
+};
+
 export default function AdminDashboard() {
   const [miners, setMiners] = useState<Miner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -138,7 +144,7 @@ export default function AdminDashboard() {
                               <User size={14} className="text-muted group-hover:text-primary transition-colors" />
                             </div>
                             <span className="text-sm font-mono font-bold truncate max-w-[120px]" title={miner.wallet}>
-                              {miner.wallet}
+                              {formatWallet(miner.wallet)}
                             </span>
                           </div>
                         </td>
@@ -210,7 +216,7 @@ export default function AdminDashboard() {
                   </div>
                   <p className="text-xs text-muted">Updating power for:</p>
                   <p className="text-[10px] font-mono bg-black/30 p-2 rounded border border-white/5 break-all">
-                    {selectedMiner.wallet}
+                    {formatWallet(selectedMiner.wallet)}
                   </p>
                 </div>
 
