@@ -108,12 +108,34 @@ async function syncState() {
         const statusDoc = await getDoc(doc(db, 'status', 'global'));
         if (statusDoc.exists()) {
           const data = unpack(statusDoc.data());
-          if (data.genesisTimestamp) {
-            GENESIS_TIMESTAMP = Number(data.genesisTimestamp);
+          const firestoreGenesis = Number(data.genesisTimestamp);
+          
+          if (firestoreGenesis && firestoreGenesis !== DEFAULT_GENESIS_TIMESTAMP) {
+            console.log(`🚨 Genesis mismatch! Firestore: ${firestoreGenesis}, Code: ${DEFAULT_GENESIS_TIMESTAMP}. Resetting Firestore state...`);
+            // Reset Firestore global status
+            await setDoc(doc(db, 'status', 'global'), pack({
+              currentBlock: 0,
+              lastBlockTimestamp: DEFAULT_GENESIS_TIMESTAMP,
+              totalDistributed: 0,
+              genesisTimestamp: DEFAULT_GENESIS_TIMESTAMP
+            }));
+            
+            GENESIS_TIMESTAMP = DEFAULT_GENESIS_TIMESTAMP;
+            state.currentBlock = 0;
+            state.lastBlockTimestamp = DEFAULT_GENESIS_TIMESTAMP;
+            state.totalDistributed = 0;
+            
+            // Note: We don't automatically delete all users here to avoid accidental data loss,
+            // but we reset their mining progress if needed.
+            // For a full reset, the admin should use /api/admin/factory-reset
+          } else {
+            if (data.genesisTimestamp) {
+              GENESIS_TIMESTAMP = Number(data.genesisTimestamp);
+            }
+            state.currentBlock = Number(data.currentBlock) || 0;
+            state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
+            state.totalDistributed = Number(data.totalDistributed) || 0;
           }
-          state.currentBlock = Number(data.currentBlock) || 0;
-          state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
-          state.totalDistributed = Number(data.totalDistributed) || 0;
           
           const expectedTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
           if (Math.abs(state.lastBlockTimestamp - expectedTimestamp) > BLOCK_INTERVAL) {
@@ -764,7 +786,8 @@ app.post("/api/admin/factory-reset", async (req, res) => {
     await setDoc(doc(db, 'status', 'global'), pack({
       currentBlock: state.currentBlock,
       lastBlockTimestamp: state.lastBlockTimestamp,
-      totalDistributed: state.totalDistributed
+      totalDistributed: state.totalDistributed,
+      genesisTimestamp: GENESIS_TIMESTAMP
     }));
 
     console.log("✅ Factory reset completed successfully.");
