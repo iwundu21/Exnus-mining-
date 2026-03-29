@@ -78,7 +78,7 @@ const TOTAL_BLOCKS = Math.floor((MINING_DAYS * 24 * 60) / 20); // 12,960
 const HASHPOWER_PER_SOL = 70;
 
 const TREASURY_WALLET = "H2bdBhMeNwjekkpsyM2g7pCDuWUxgxADMGh4q8xAnt8J";
-const connection = new Connection("https://api.mainnet-beta.solana.com");
+const connection = new Connection("https://solana.llamarpc.com", "confirmed");
 
 // Fixed start time: 2026-03-29 10:08:10 UTC
 const GENESIS_TIMESTAMP = 1774778890; 
@@ -400,38 +400,69 @@ async function checkBlocks() {
 // ==========================================
 // VERIFY SOL PAYMENT
 // ==========================================
+const fallbackRPCs = [
+  "https://solana-mainnet.rpc.extrnode.com",
+  "https://rpc.ankr.com/solana",
+  "https://api.mainnet-beta.solana.com",
+  "https://solana.publicnode.com",
+  "https://mainnet.helius-rpc.com/?api-key=49911993-9080-4966-993c-238435843234"
+];
+
+import bs58 from 'bs58';
+
 async function verifySolPayment(signature: string, amount: number, wallet: string) {
-  if (state.usedSignatures.has(signature)) return false;
+  let finalSignature = signature;
+  if (signature.endsWith('=') || signature.includes('+') || signature.includes('/') || 
+      (signature.length === 88 && /[0OIl]/.test(signature))) {
+    try {
+      finalSignature = bs58.encode(Buffer.from(signature, 'base64'));
+    } catch (e) {
+      console.warn('Failed to decode base64 signature in backend, using original', e);
+    }
+  }
 
-  try {
-    const tx = await connection.getParsedTransaction(signature, {
-      maxSupportedTransactionVersion: 0,
-    });
+  if (state.usedSignatures.has(finalSignature)) return false;
 
-    if (!tx) return false;
+  const connections = [connection, ...fallbackRPCs.map(rpc => new Connection(rpc))];
 
-    const instructions = tx.transaction.message.instructions;
+  for (const conn of connections) {
+    try {
+      const tx = await conn.getParsedTransaction(finalSignature, {
+        maxSupportedTransactionVersion: 0,
+        commitment: 'confirmed'
+      });
 
-    for (let ix of instructions) {
-      if ('program' in ix && ix.program === "system") {
-        const info = (ix as any).parsed.info;
+      if (!tx) continue;
 
-        if (
-          info.destination === TREASURY_WALLET &&
-          info.source === wallet &&
-          info.lamports === Math.round(amount * 1e9)
-        ) {
-          state.usedSignatures.add(signature);
-          return true;
+      const instructions = tx.transaction.message.instructions;
+
+      for (let ix of instructions) {
+        if ('program' in ix && ix.program === "system") {
+          const info = (ix as any).parsed.info;
+
+          // Use rounded lamports for comparison
+          const expectedLamports = Math.round(amount * 1e9);
+          
+          if (
+            info.destination === TREASURY_WALLET &&
+            info.source === wallet &&
+            Math.abs(info.lamports - expectedLamports) < 100 // Allow tiny rounding difference
+          ) {
+            state.usedSignatures.add(finalSignature);
+            return true;
+          }
         }
       }
+      
+      // If we found the transaction but it didn't match our criteria, we don't need to check other RPCs
+      return false;
+    } catch (e) {
+      console.log(`Verification error with RPC: ${conn.rpcEndpoint}`, e);
+      // Try next RPC
     }
-
-    return false;
-  } catch (e) {
-    console.log("Verification error", e);
-    return false;
   }
+
+  return false;
 }
 
 // ==========================================

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
-import { SystemProgram, Transaction, PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { SystemProgram, Transaction, PublicKey, LAMPORTS_PER_SOL, Connection, VersionedTransaction, TransactionMessage, TransactionInstruction } from '@solana/web3.js';
+import bs58 from 'bs58';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Cpu, Zap, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
@@ -23,7 +24,7 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'sending' | 'verifying' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'preparing' | 'sending' | 'verifying' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [treasuryWallet, setTreasuryWallet] = useState<string | null>(null);
 
@@ -49,32 +50,106 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
     }
 
     setLoading(true);
-    setStatus('sending');
+    setStatus('preparing');
     setError(null);
 
     try {
       const treasuryPubKey = new PublicKey(treasuryWallet);
       
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-      
-      const transaction = new Transaction({
-        recentBlockhash: blockhash,
-        feePayer: publicKey,
-      }).add(
-        SystemProgram.transfer({
-          fromPubkey: publicKey,
-          toPubkey: treasuryPubKey,
-          lamports: Math.round(tier.sol * LAMPORTS_PER_SOL),
-        })
-      );
+      let blockhash, lastValidBlockHeight;
+      const fallbackRPCs = [
+        "https://solana-mainnet.rpc.extrnode.com",
+        "https://rpc.ankr.com/solana",
+        "https://api.mainnet-beta.solana.com",
+        "https://solana.publicnode.com",
+        "https://mainnet.helius-rpc.com/?api-key=49911993-9080-4966-993c-238435843234"
+      ];
 
-      const signature = await sendTransaction(transaction, connection);
+      const fetchBlockhashWithTimeout = async (conn: Connection, timeoutMs = 5000) => {
+        return Promise.race([
+          conn.getLatestBlockhash(),
+          new Promise<never>((_, reject) => 
+            setTimeout(() => reject(new Error('Blockhash fetch timeout')), timeoutMs)
+          )
+        ]);
+      };
+
+      let success = false;
+      let workingConnection = connection;
+      // Try primary connection first
+      try {
+        const latest = await fetchBlockhashWithTimeout(connection);
+        blockhash = latest.blockhash;
+        lastValidBlockHeight = latest.lastValidBlockHeight;
+        success = true;
+      } catch (e) {
+        console.error("Primary RPC failed, trying fallbacks...", e);
+      }
+
+      if (!success) {
+        for (const rpc of fallbackRPCs) {
+          try {
+            const fallbackConn = new Connection(rpc);
+            const latest = await fetchBlockhashWithTimeout(fallbackConn, 3000); // Shorter timeout for fallbacks
+            blockhash = latest.blockhash;
+            lastValidBlockHeight = latest.lastValidBlockHeight;
+            workingConnection = fallbackConn;
+            success = true;
+            console.log(`Successfully fetched blockhash from fallback: ${rpc}`);
+            break;
+          } catch (e) {
+            console.error(`Fallback RPC failed: ${rpc}`, e);
+            // Don't wait if we're just timing out, try the next one immediately
+          }
+        }
+      }
+
+      if (!success) {
+        throw new Error("Failed to connect to Solana network. All RPC services are currently busy. Please check your internet connection or try again in a few minutes.");
+      }
+      
+      const messageV0 = new TransactionMessage({
+        payerKey: publicKey,
+        recentBlockhash: blockhash,
+        instructions: [
+          SystemProgram.transfer({
+            fromPubkey: publicKey,
+            toPubkey: treasuryPubKey,
+            lamports: Math.round(tier.sol * LAMPORTS_PER_SOL),
+          })
+        ],
+      }).compileToV0Message();
+
+      const transaction = new VersionedTransaction(messageV0);
+
+      setStatus('sending');
+      const signature = await sendTransaction(transaction, workingConnection);
+      
+      let finalSignature = signature;
+      
+      if (typeof signature !== 'string') {
+        // Just in case a wallet returns a Uint8Array directly
+        finalSignature = bs58.encode(signature as unknown as Uint8Array);
+      } else if (signature.endsWith('=') || signature.includes('+') || signature.includes('/') || 
+          (signature.length === 88 && /[0OIl]/.test(signature))) {
+        // Some wallets return base64 encoded strings
+        try {
+          const binaryString = atob(signature);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          finalSignature = bs58.encode(bytes);
+        } catch (e) {
+          console.warn('Failed to decode base64 signature, using original', e);
+        }
+      }
       
       setStatus('verifying');
       
       // Wait for confirmation
-      await connection.confirmTransaction({
-        signature,
+      await workingConnection.confirmTransaction({
+        signature: finalSignature,
         blockhash,
         lastValidBlockHeight
       }, 'confirmed');
@@ -82,7 +157,7 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
       // Verify with backend
       const response = await axios.post('/api/buy-hashpower', {
         wallet: publicKey.toBase58(),
-        signature,
+        signature: finalSignature,
         solAmount: tier.sol
       });
 
@@ -153,15 +228,15 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
               </div>
             )}
 
-            {(status === 'sending' || status === 'verifying') && (
+            {(status === 'preparing' || status === 'sending' || status === 'verifying') && (
               <div className="py-12 text-center space-y-4">
                 <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto" />
                 <div className="space-y-1">
                   <h4 className="text-lg font-bold uppercase tracking-tight">
-                    {status === 'sending' ? 'Awaiting Signature' : 'Verifying Transaction'}
+                    {status === 'preparing' ? 'Preparing Transaction' : status === 'sending' ? 'Awaiting Signature' : 'Verifying Transaction'}
                   </h4>
                   <p className="text-xs text-muted">
-                    {status === 'sending' ? 'Please confirm the transaction in your wallet.' : 'Securing your hashpower on the network...'}
+                    {status === 'preparing' ? 'Connecting to Solana network...' : status === 'sending' ? 'Please confirm the transaction in your wallet.' : 'Securing your hashpower on the network...'}
                   </p>
                 </div>
               </div>
