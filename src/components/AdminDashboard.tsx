@@ -35,6 +35,10 @@ export default function AdminDashboard() {
   const [clearingHistory, setClearingHistory] = useState(false);
   const [clearMessage, setClearMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resettingFactory, setResettingFactory] = useState(false);
+  const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
   useEffect(() => {
     if (publicKey) {
       fetchMiners();
@@ -67,6 +71,23 @@ export default function AdminDashboard() {
       setClearMessage({ type: 'error', text: 'Failed to clear history. Please try again.' });
     } finally {
       setClearingHistory(false);
+    }
+  };
+
+  const handleFactoryReset = async () => {
+    if (!publicKey) return;
+    setResettingFactory(true);
+    setResetMessage(null);
+    try {
+      await axios.post('/api/admin/factory-reset', { adminWallet: publicKey.toString() });
+      setResetMessage({ type: 'success', text: 'Factory reset completed successfully. Network restarted.' });
+      setShowResetConfirm(false);
+      fetchMiners(); // Refresh list (should be empty)
+    } catch (err) {
+      console.error('Failed to factory reset:', err);
+      setResetMessage({ type: 'error', text: 'Failed to factory reset. Please try again.' });
+    } finally {
+      setResettingFactory(false);
     }
   };
 
@@ -371,6 +392,59 @@ export default function AdminDashboard() {
               >
                 {clearMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
                 <span>{clearMessage.text}</span>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Factory Reset Panel */}
+          <div className="p-6 bg-red-600/10 border border-red-600/30 rounded-2xl space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-red-600">
+                <AlertCircle size={18} />
+                <h3 className="font-bold">Factory Reset</h3>
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                This will delete ALL users, ALL history, and reset the mining engine to the current timestamp. This is the ultimate reset.
+              </p>
+            </div>
+
+            {!showResetConfirm ? (
+              <button 
+                onClick={() => setShowResetConfirm(true)}
+                className="w-full py-3 bg-red-600/20 text-red-600 rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-red-600/30 transition-all border border-red-600/30"
+              >
+                Factory Reset App
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-red-500 font-bold text-center">DELETE EVERYTHING? NO UNDO!</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleFactoryReset}
+                    disabled={resettingFactory}
+                    className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-red-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {resettingFactory ? <Loader2 className="animate-spin" size={14} /> : 'YES, RESET ALL'}
+                  </button>
+                  <button 
+                    onClick={() => setShowResetConfirm(false)}
+                    disabled={resettingFactory}
+                    className="flex-1 py-3 bg-white/5 text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-white/10 transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {resetMessage && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-3 rounded-lg flex items-start gap-2 text-xs ${resetMessage.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
+              >
+                {resetMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
+                <span>{resetMessage.text}</span>
               </motion.div>
             )}
           </div>

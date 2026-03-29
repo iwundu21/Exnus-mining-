@@ -119,7 +119,18 @@ async function syncState() {
         }
 
         const usersSnap = await getDocs(collection(db, 'users'));
-        state.users = usersSnap.docs.map(d => unpack(d.data()));
+        const users = usersSnap.docs.map(d => unpack(d.data()));
+        
+        // Merge with local state to avoid losing in-memory updates
+        users.forEach(u => {
+          const existing = state.users.find(eu => eu.wallet === u.wallet);
+          if (!existing) {
+            state.users.push(u);
+          } else {
+            // Update existing user data if Firestore is newer (optional, but good for consistency)
+            Object.assign(existing, u);
+          }
+        });
 
         const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
         const rawHistory = historySnap.docs.map(d => unpack(d.data()));
@@ -131,7 +142,7 @@ async function syncState() {
       })(),
       timeout
     ]);
-    console.log("✅ syncState completed.");
+    console.log(`✅ syncState completed. Users: ${state.users.length}`);
   } catch (err) {
     console.error("❌ Error syncing state from Firestore:", err);
   }
@@ -521,25 +532,27 @@ async function verifySolPayment(signature: string, amount: number, wallet: strin
 app.get("/api/sol-balance/:wallet", async (req, res) => {
   const { wallet } = req.params;
   const apiKey = process.env.ALCHEMY_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: "ALCHEMY_API_KEY not configured" });
-  }
-
+  
   try {
-    const response = await axios.post(`https://solana-mainnet.g.alchemy.com/v2/${apiKey}`, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "getBalance",
-      params: [wallet]
-    });
-    
-    if (response.data.error) {
-      throw new Error(response.data.error.message);
+    if (apiKey) {
+      const response = await axios.post(`https://solana-mainnet.g.alchemy.com/v2/${apiKey}`, {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getBalance",
+        params: [wallet]
+      });
+      
+      if (!response.data.error) {
+        return res.json({ balance: response.data.result.value / 1e9 });
+      }
+      console.warn("Alchemy balance fetch failed, falling back to standard RPC:", response.data.error.message);
     }
-    
-    res.json({ balance: response.data.result.value / 1e9 });
+
+    // Fallback to standard connection
+    const balance = await connection.getBalance(new (await import("@solana/web3.js")).PublicKey(wallet));
+    res.json({ balance: balance / 1e9 });
   } catch (err) {
-    console.error("Error fetching SOL balance from Alchemy:", err);
+    console.error("Error fetching SOL balance:", err);
     res.status(500).json({ error: "Failed to fetch SOL balance" });
   }
 });
@@ -746,6 +759,69 @@ app.post("/api/admin/clear-history", async (req, res) => {
   }
 });
 
+// Factory Reset
+app.post("/api/admin/factory-reset", async (req, res) => {
+  const { adminWallet } = req.body;
+
+  if (adminWallet !== ADMIN_WALLET) {
+    return res.status(403).json({ error: "Unauthorized access. Admin only." });
+  }
+
+  try {
+    console.log("🚨 FACTORY RESET INITIATED BY ADMIN 🚨");
+
+    // 1. Reset memory state
+    state.users = [];
+    state.history = [];
+    state.usedSignatures = new Set();
+    state.currentBlock = 0;
+    state.totalDistributed = 0;
+    state.lastBlockTimestamp = now(); // New genesis is NOW
+
+    // 2. Clear Firestore collections
+    // Clear 'users'
+    const usersSnap = await getDocs(collection(db, 'users'));
+    for (const d of usersSnap.docs) {
+      // Clear user history subcollection
+      const userHistorySnap = await getDocs(collection(db, 'users', d.id, 'history'));
+      for (const uh of userHistorySnap.docs) {
+        await deleteDoc(doc(db, 'users', d.id, 'history', uh.id));
+      }
+      await deleteDoc(doc(db, 'users', d.id));
+    }
+
+    // Clear 'history'
+    const historySnap = await getDocs(collection(db, 'history'));
+    for (const d of historySnap.docs) {
+      // Clear rewards subcollection
+      const rewardsSnap = await getDocs(collection(db, 'history', d.id, 'rewards'));
+      for (const r of rewardsSnap.docs) {
+        await deleteDoc(doc(db, 'history', d.id, 'rewards', r.id));
+      }
+      await deleteDoc(doc(db, 'history', d.id));
+    }
+
+    // Clear 'status'
+    const statusSnap = await getDocs(collection(db, 'status'));
+    for (const d of statusSnap.docs) {
+      await deleteDoc(doc(db, 'status', d.id));
+    }
+
+    // 3. Save new global status
+    await setDoc(doc(db, 'status', 'global'), pack({
+      currentBlock: state.currentBlock,
+      lastBlockTimestamp: state.lastBlockTimestamp,
+      totalDistributed: state.totalDistributed
+    }));
+
+    console.log("✅ Factory reset completed successfully.");
+    res.json({ success: true, message: "Factory reset completed successfully. Network restarted at current timestamp." });
+  } catch (err) {
+    console.error("❌ Factory reset failed:", err);
+    res.status(500).json({ error: "Factory reset failed" });
+  }
+});
+
 // ==========================================
 // STARTUP AND VITE MIDDLEWARE
 // ==========================================
@@ -788,6 +864,10 @@ async function startServer() {
       console.log("🔍 Running initial block check...");
       await checkBlocks();
       setInterval(checkBlocks, 5000);
+      
+      // Periodic user sync (every 30 seconds)
+      setInterval(syncState, 30000);
+      
       console.log("✅ Initial check complete.");
     })();
   });
