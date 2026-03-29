@@ -17,7 +17,19 @@ export default function MyAssets() {
         publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`) : Promise.resolve({ data: null })
       ]);
       setStatus(statusRes.data);
-      setUser(userRes.data);
+      if (userRes.data && Array.isArray(userRes.data.history)) {
+        // Deduplicate user history using a Map
+        const historyMap = new Map();
+        userRes.data.history.forEach((item: any) => {
+          const key = `${item.blockNumber}-${item.timestamp}`;
+          if (!historyMap.has(key)) {
+            historyMap.set(key, item);
+          }
+        });
+        setUser({ ...userRes.data, history: Array.from(historyMap.values()) });
+      } else {
+        setUser(userRes.data);
+      }
     } catch (err) {
       console.error(err);
     }

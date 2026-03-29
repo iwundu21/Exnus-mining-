@@ -12,7 +12,15 @@ export default function MiningHistory() {
     try {
       const res = await axios.get('/api/history');
       if (Array.isArray(res.data)) {
-        setHistory(res.data);
+        // Deduplicate history by blockNumber and timestamp using a Map
+        const historyMap = new Map();
+        res.data.forEach((item: any) => {
+          const key = `${item.blockNumber}-${item.timestamp}`;
+          if (!historyMap.has(key)) {
+            historyMap.set(key, item);
+          }
+        });
+        setHistory(Array.from(historyMap.values()));
       } else {
         console.error("Expected array for history, got:", res.data);
       }

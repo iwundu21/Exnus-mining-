@@ -55,8 +55,13 @@ async function syncState() {
     const usersSnap = await getDocs(collection(db, 'users'));
     state.users = usersSnap.docs.map(d => d.data());
 
-    const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(50)));
-    state.history = historySnap.docs.map(d => d.data());
+    const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
+    const rawHistory = historySnap.docs.map(d => d.data());
+    state.history = rawHistory.reduce((acc: any[], current: any) => {
+      const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
+      if (!exists) acc.push(current);
+      return acc;
+    }, []).slice(0, 50);
   } catch (err) {
     console.error("Error syncing state from Firestore:", err);
   }
@@ -133,9 +138,13 @@ async function processBlock() {
         note: "Empty Block - No Hashpower"
       };
       if (!user.history) user.history = [];
-      user.history.unshift(record);
-      if (user.history.length > 20) user.history.pop();
-      await addDoc(collection(db, 'users', user.wallet, 'history'), record);
+      
+      const exists = user.history.some((h: any) => h.blockNumber === record.blockNumber && h.timestamp === record.timestamp);
+      if (!exists) {
+        user.history.unshift(record);
+        if (user.history.length > 20) user.history.pop();
+      }
+      await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), record);
     }
 
     const emptyBlockData = {
@@ -146,9 +155,13 @@ async function processBlock() {
       activeMiners: 0,
       status: "DEFERRED"
     };
-    state.history.unshift(emptyBlockData);
-    if (state.history.length > 50) state.history.pop();
-    await addDoc(collection(db, 'history'), emptyBlockData);
+    
+    const globalExists = state.history.some((h: any) => h.blockNumber === emptyBlockData.blockNumber && h.timestamp === emptyBlockData.timestamp);
+    if (!globalExists) {
+      state.history.unshift(emptyBlockData);
+      if (state.history.length > 50) state.history.pop();
+    }
+    await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), emptyBlockData);
 
     state.lastBlockTimestamp += BLOCK_INTERVAL;
     await setDoc(doc(db, 'status', 'global'), {
@@ -177,32 +190,41 @@ async function processBlock() {
     user.totalEarned += reward;
     state.totalDistributed += reward;
 
-    const record = {
-      blockNumber: state.currentBlock,
-      reward: reward,
-      timestamp: state.lastBlockTimestamp,
-      hashpower: user.hashpower
-    };
+  const record = {
+    blockNumber: state.currentBlock,
+    reward: reward,
+    timestamp: state.lastBlockTimestamp,
+    hashpower: user.hashpower
+  };
 
-    if (!user.history) user.history = [];
+  if (!user.history) user.history = [];
+  
+  // Check for duplicate before unshifting
+  const exists = user.history.some((h: any) => h.blockNumber === record.blockNumber && h.timestamp === record.timestamp);
+  if (!exists) {
     user.history.unshift(record);
     if (user.history.length > 20) user.history.pop();
+  }
 
     // Persist user update and history record
     await updateDoc(doc(db, 'users', user.wallet), {
       totalEarned: user.totalEarned,
       lastReward: reward
     });
-    await addDoc(collection(db, 'users', user.wallet, 'history'), record);
+    await setDoc(doc(db, 'users', user.wallet, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), record);
 
     console.log(`💰 ${user.wallet} → ${reward.toFixed(4)}`);
   }
 
-  state.history.unshift(blockData);
-  if (state.history.length > 50) state.history.pop();
+  // Check for duplicate in global history
+  const globalExists = state.history.some((h: any) => h.blockNumber === blockData.blockNumber && h.timestamp === blockData.timestamp);
+  if (!globalExists) {
+    state.history.unshift(blockData);
+    if (state.history.length > 50) state.history.pop();
+  }
 
   // Persist global history and status
-  await addDoc(collection(db, 'history'), blockData);
+  await setDoc(doc(db, 'history', `${state.currentBlock}-${state.lastBlockTimestamp}`), blockData);
   
   state.currentBlock++;
   state.lastBlockTimestamp += BLOCK_INTERVAL;
@@ -296,8 +318,16 @@ app.get("/api/status", (req, res) => {
 app.get("/api/user/:wallet", async (req, res) => {
   const user = await getUser(req.params.wallet);
   // Fetch history from Firestore for this user
-  const historySnap = await getDocs(query(collection(db, 'users', user.wallet, 'history'), orderBy('blockNumber', 'desc'), limit(20)));
-  const history = historySnap.docs.map(d => d.data());
+  const historySnap = await getDocs(query(collection(db, 'users', user.wallet, 'history'), orderBy('blockNumber', 'desc'), limit(40)));
+  const rawHistory = historySnap.docs.map(d => d.data());
+  
+  // Deduplicate by blockNumber and timestamp
+  const history = rawHistory.reduce((acc: any[], current: any) => {
+    const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
+    if (!exists) acc.push(current);
+    return acc;
+  }, []).slice(0, 20);
+
   res.json({ ...user, history });
 });
 
@@ -357,7 +387,13 @@ app.get("/api/leaderboard", (req, res) => {
 
 // History
 app.get("/api/history", (req, res) => {
-  res.json(state.history);
+  // Deduplicate global history
+  const uniqueHistory = state.history.reduce((acc: any[], current: any) => {
+    const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
+    if (!exists) acc.push(current);
+    return acc;
+  }, []);
+  res.json(uniqueHistory);
 });
 
 // ==========================================
