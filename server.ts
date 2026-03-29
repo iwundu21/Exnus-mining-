@@ -82,7 +82,7 @@ const ADMIN_WALLET = "9Kqt28pfMVBsBvXYYnYQCT2BZyorAwzbR6dUmgQfsZYW";
 const connection = new Connection("https://solana.llamarpc.com", "confirmed");
 
 // Fixed start time: 2026-03-29 10:08:10 UTC
-const GENESIS_TIMESTAMP = 1774778890; 
+let GENESIS_TIMESTAMP = 1774778890; 
 
 // ==========================================
 // STATE (Now backed by Firestore)
@@ -107,6 +107,9 @@ async function syncState() {
         const statusDoc = await getDoc(doc(db, 'status', 'global'));
         if (statusDoc.exists()) {
           const data = unpack(statusDoc.data());
+          if (data.genesisTimestamp) {
+            GENESIS_TIMESTAMP = Number(data.genesisTimestamp);
+          }
           state.currentBlock = Number(data.currentBlock) || 0;
           state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
           state.totalDistributed = Number(data.totalDistributed) || 0;
@@ -771,14 +774,23 @@ app.post("/api/admin/factory-reset", async (req, res) => {
     console.log("🚨 FACTORY RESET INITIATED BY ADMIN 🚨");
 
     // 1. Reset memory state
+    const currentTime = now();
+    GENESIS_TIMESTAMP = currentTime;
     state.users = [];
     state.history = [];
     state.usedSignatures = new Set();
     state.currentBlock = 0;
     state.totalDistributed = 0;
-    state.lastBlockTimestamp = now(); // New genesis is NOW
+    state.lastBlockTimestamp = currentTime; // New genesis is NOW
 
     // 2. Clear Firestore collections
+    // Update global status with new genesis
+    await setDoc(doc(db, 'status', 'global'), pack({
+      currentBlock: 0,
+      lastBlockTimestamp: currentTime,
+      totalDistributed: 0,
+      genesisTimestamp: currentTime
+    }));
     // Clear 'users'
     const usersSnap = await getDocs(collection(db, 'users'));
     for (const d of usersSnap.docs) {
