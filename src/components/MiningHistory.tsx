@@ -61,7 +61,7 @@ export default function MiningHistory() {
           ) : (
             history.map((block, i) => (
               <motion.div
-                key={block.blockNumber}
+                key={`${block.blockNumber}-${block.timestamp}`}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.03 }}
