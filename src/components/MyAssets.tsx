@@ -92,7 +92,7 @@ export default function MyAssets() {
 
   // Helper to determine font size based on length
   const getFontSizeClass = (value: number) => {
-    const str = value.toLocaleString(undefined, { maximumFractionDigits: 9 });
+    const str = (value || 0).toLocaleString(undefined, { maximumFractionDigits: 9 });
     if (str.length > 20) return "text-sm";
     if (str.length > 15) return "text-lg";
     if (str.length > 10) return "text-2xl";
@@ -161,8 +161,8 @@ export default function MyAssets() {
             />
           </div>
           <div className="flex items-baseline gap-2 overflow-hidden">
-            <span className={`${getFontSizeClass(balance)} font-mono font-bold truncate`}>
-              {balance.toLocaleString(undefined, { maximumFractionDigits: 9 })}
+            <span className={`${getFontSizeClass(balance || 0)} font-mono font-bold truncate`}>
+              {(balance || 0).toLocaleString(undefined, { maximumFractionDigits: 9 })}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <img 

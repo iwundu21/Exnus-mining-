@@ -117,7 +117,7 @@ export default function AdminDashboard() {
           <div className="text-right">
             <p className="text-[10px] text-muted uppercase tracking-widest font-bold">Network Power</p>
             <p className="text-xl font-mono font-bold text-primary">
-              {miners.reduce((sum, m) => sum + m.hashpower, 0).toLocaleString()} <span className="text-[10px]">TH/s</span>
+              {(miners.reduce((sum, m) => sum + (m.hashpower || 0), 0)).toLocaleString()} <span className="text-[10px]">TH/s</span>
             </p>
           </div>
         </div>
@@ -206,7 +206,7 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td className="p-4">
-                          <span className="text-sm font-mono font-bold text-primary">{miner.hashpower.toLocaleString()}</span>
+                          <span className="text-sm font-mono font-bold text-primary">{(miner.hashpower || 0).toLocaleString()}</span>
                           <span className="text-[10px] text-muted ml-1">TH/s</span>
                         </td>
                         <td className="p-4">
