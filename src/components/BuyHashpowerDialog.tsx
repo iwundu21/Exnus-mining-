@@ -31,7 +31,7 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const res = await axios.get('/api/config');
+        const res = await axios.get('/api/config', { timeout: 10000 });
         setTreasuryWallet(res.data.treasuryWallet);
       } catch (err) {
         console.error("Failed to fetch config:", err);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
 import { motion } from 'motion/react';
@@ -11,12 +11,15 @@ export default function MyAssets() {
   const [user, setUser] = useState<any>(null);
   const [status, setStatus] = useState<any>(null);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
+  const isFetchingRef = useRef(false);
 
   const fetchData = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       const [statusRes, userRes] = await Promise.all([
-        axios.get('/api/status'),
-        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`) : Promise.resolve({ data: null })
+        axios.get('/api/status', { timeout: 10000 }),
+        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`, { timeout: 10000 }) : Promise.resolve({ data: null })
       ]);
       setStatus(statusRes.data);
       if (userRes.data && Array.isArray(userRes.data.history)) {
@@ -33,7 +36,9 @@ export default function MyAssets() {
         setUser(userRes.data);
       }
     } catch (err) {
-      console.error(err);
+      console.error("MyAssets fetch error:", err);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import axios from 'axios';
@@ -36,12 +36,16 @@ export default function Dashboard() {
     return diff.toFixed(1);
   };
 
+  const isFetchingRef = useRef(false);
+
   const fetchData = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
       const [statusRes, userRes, diffRes] = await Promise.all([
-        axios.get('/api/status'),
-        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`) : Promise.resolve({ data: null }),
-        axios.get('https://blockchain.info/q/getdifficulty').catch(() => ({ data: null }))
+        axios.get('/api/status', { timeout: 10000 }),
+        publicKey ? axios.get(`/api/user/${publicKey.toBase58()}`, { timeout: 10000 }) : Promise.resolve({ data: null }),
+        axios.get('https://blockchain.info/q/getdifficulty', { timeout: 5000 }).catch(() => ({ data: null }))
       ]);
       console.log("Dashboard: statusRes=", statusRes.data);
       setStatus(prev => {
@@ -63,6 +67,8 @@ export default function Dashboard() {
       }
     } catch (err) {
       console.error("Dashboard error:", err);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 

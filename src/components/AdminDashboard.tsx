@@ -28,18 +28,38 @@ export default function AdminDashboard() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const [clearMessage, setClearMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
   useEffect(() => {
     fetchMiners();
   }, []);
 
   const fetchMiners = async () => {
     try {
-      const res = await axios.get('/api/status');
+      const res = await axios.get('/api/status', { timeout: 10000 });
       setMiners(res.data.miners || []);
     } catch (err) {
       console.error('Failed to fetch miners:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    setClearingHistory(true);
+    setClearMessage(null);
+    try {
+      await axios.post('/api/admin/clear-history');
+      setClearMessage({ type: 'success', text: 'All history data cleared successfully.' });
+      setShowClearConfirm(false);
+      fetchMiners(); // Refresh list
+    } catch (err) {
+      console.error('Failed to clear history:', err);
+      setClearMessage({ type: 'error', text: 'Failed to clear history. Please try again.' });
+    } finally {
+      setClearingHistory(false);
     }
   };
 
@@ -263,6 +283,59 @@ export default function AdminDashboard() {
               </div>
             )}
           </AnimatePresence>
+
+          {/* Clear History Panel */}
+          <div className="p-6 bg-red-500/5 border border-red-500/20 rounded-2xl space-y-4 mt-8">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-red-500">
+                <AlertCircle size={18} />
+                <h3 className="font-bold">Danger Zone</h3>
+              </div>
+              <p className="text-xs text-muted leading-relaxed">
+                Clearing history will permanently delete all block history and user mining records. This action cannot be undone.
+              </p>
+            </div>
+
+            {!showClearConfirm ? (
+              <button 
+                onClick={() => setShowClearConfirm(true)}
+                className="w-full py-3 bg-red-500/10 text-red-500 rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-red-500/20 transition-all border border-red-500/20"
+              >
+                Clear All History
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-red-400 font-bold text-center">Are you absolutely sure?</p>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={handleClearHistory}
+                    disabled={clearingHistory}
+                    className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-red-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {clearingHistory ? <Loader2 className="animate-spin" size={14} /> : 'Yes, Delete'}
+                  </button>
+                  <button 
+                    onClick={() => setShowClearConfirm(false)}
+                    disabled={clearingHistory}
+                    className="flex-1 py-3 bg-white/5 text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-white/10 transition-all disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {clearMessage && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-3 rounded-lg flex items-start gap-2 text-xs ${clearMessage.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
+              >
+                {clearMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
+                <span>{clearMessage.text}</span>
+              </motion.div>
+            )}
+          </div>
         </div>
       </div>
     </div>

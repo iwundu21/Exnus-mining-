@@ -182,7 +182,7 @@ async function getUser(wallet: string, req?: any) {
     const ip = (req?.ip || req?.headers['x-forwarded-for'] || user.ip || 'unknown').split(',')[0].trim();
     if (ip !== 'unknown' && ip !== '::1' && ip !== '127.0.0.1') {
       try {
-        const geoRes = await axios.get(`http://ip-api.com/json/${ip}`);
+        const geoRes = await axios.get(`http://ip-api.com/json/${ip}`, { timeout: 3000 });
         if (geoRes.data && geoRes.data.status === 'success') {
           user.country = geoRes.data.country;
           user.countryCode = geoRes.data.countryCode;
@@ -507,19 +507,24 @@ app.get("/api/history/:blockId/rewards", async (req, res) => {
 
 // Get User
 app.get("/api/user/:wallet", async (req, res) => {
-  const user = await getUser(req.params.wallet, req);
-  // Fetch history from Firestore for this user
-  const historySnap = await getDocs(query(collection(db, 'users', user.wallet, 'history'), orderBy('blockNumber', 'desc'), limit(40)));
-  const rawHistory = historySnap.docs.map(d => unpack(d.data()));
-  
-  // Deduplicate by blockNumber and timestamp
-  const history = rawHistory.reduce((acc: any[], current: any) => {
-    const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
-    if (!exists) acc.push(current);
-    return acc;
-  }, []).slice(0, 20);
+  try {
+    const user = await getUser(req.params.wallet, req);
+    // Fetch history from Firestore for this user
+    const historySnap = await getDocs(query(collection(db, 'users', user.wallet, 'history'), orderBy('blockNumber', 'desc'), limit(40)));
+    const rawHistory = historySnap.docs.map(d => unpack(d.data()));
+    
+    // Deduplicate by blockNumber and timestamp
+    const history = rawHistory.reduce((acc: any[], current: any) => {
+      const exists = acc.find(item => item.blockNumber === current.blockNumber && item.timestamp === current.timestamp);
+      if (!exists) acc.push(current);
+      return acc;
+    }, []).slice(0, 20);
 
-  res.json({ ...user, history });
+    res.json({ ...user, history });
+  } catch (err) {
+    console.error("Error fetching user data:", err);
+    res.status(500).json({ error: "Failed to fetch user data" });
+  }
 });
 
 // Buy hashpower
@@ -612,6 +617,45 @@ app.get("/api/config", (req, res) => {
   res.json({
     treasuryWallet: TREASURY_WALLET
   });
+});
+
+// Clear History
+app.post("/api/admin/clear-history", async (req, res) => {
+  try {
+    console.log("⚠️ Admin requested to clear all history data.");
+    
+    // 1. Clear memory state
+    state.history = [];
+    
+    // 2. Clear global history collection
+    const historySnap = await getDocs(collection(db, 'history'));
+    for (const d of historySnap.docs) {
+      // Clear rewards subcollection
+      const rewardsSnap = await getDocs(collection(db, 'history', d.id, 'rewards'));
+      for (const r of rewardsSnap.docs) {
+        await deleteDoc(doc(db, 'history', d.id, 'rewards', r.id));
+      }
+      await deleteDoc(doc(db, 'history', d.id));
+    }
+
+    // 3. Clear users' history subcollections
+    const usersSnap = await getDocs(collection(db, 'users'));
+    for (const u of usersSnap.docs) {
+      const userHistorySnap = await getDocs(collection(db, 'users', u.id, 'history'));
+      for (const uh of userHistorySnap.docs) {
+        await deleteDoc(doc(db, 'users', u.id, 'history', uh.id));
+      }
+      // Clear in-memory user history
+      const memUser = state.users.find(user => user.wallet === u.id);
+      if (memUser) memUser.history = [];
+    }
+
+    console.log("✅ All history data cleared successfully.");
+    res.json({ success: true, message: "History cleared successfully" });
+  } catch (err) {
+    console.error("❌ Failed to clear history:", err);
+    res.status(500).json({ error: "Failed to clear history" });
+  }
 });
 
 // ==========================================

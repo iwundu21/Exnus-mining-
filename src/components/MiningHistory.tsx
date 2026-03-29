@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { History as HistoryIcon, Hash, Clock, Coins, X, ExternalLink, User } from 'lucide-react';
@@ -127,10 +127,13 @@ function BlockDetailsDialog({ block, onClose }: { block: any, onClose: () => voi
 export default function MiningHistory() {
   const [history, setHistory] = useState<any[]>([]);
   const [selectedBlock, setSelectedBlock] = useState<any | null>(null);
+  const isFetchingRef = useRef(false);
 
   const fetchHistory = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     try {
-      const res = await axios.get('/api/history');
+      const res = await axios.get('/api/history', { timeout: 10000 });
       if (Array.isArray(res.data)) {
         // Deduplicate history by blockNumber and timestamp using a Map
         const historyMap = new Map();
@@ -145,7 +148,9 @@ export default function MiningHistory() {
         console.error("Expected array for history, got:", res.data);
       }
     } catch (err) {
-      console.error(err);
+      console.error("MiningHistory fetch error:", err);
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
