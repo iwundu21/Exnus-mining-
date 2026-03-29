@@ -45,6 +45,7 @@ export default function Dashboard() {
   const { publicKey } = useWallet();
   const [status, setStatus] = useState<Status | null>(null);
   const [user, setUser] = useState<any>(null);
+  const [solBalance, setSolBalance] = useState<number>(0);
   const [history, setHistory] = useState<any[]>([]);
   const [difficulty, setDifficulty] = useState<string>('84.2P');
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
@@ -83,7 +84,9 @@ export default function Dashboard() {
         return newStatus;
       });
       setUser(userRes.data);
-      setHistory(historyRes.data.slice(0, 10).reverse());
+      if (Array.isArray(historyRes.data)) {
+        setHistory(historyRes.data.slice(0, 10).reverse());
+      }
 
       if (diffRes && diffRes.data) {
         const diffNum = parseFloat(diffRes.data);
@@ -104,6 +107,24 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 5000);
+    return () => clearInterval(interval);
+  }, [publicKey]);
+
+  useEffect(() => {
+    if (!publicKey) {
+      setSolBalance(0);
+      return;
+    }
+    const fetchSolBalance = async () => {
+      try {
+        const res = await axios.get(`/api/sol-balance/${publicKey.toBase58()}`);
+        setSolBalance(res.data.balance);
+      } catch (err) {
+        console.error("Error fetching SOL balance:", err);
+      }
+    };
+    fetchSolBalance();
+    const interval = setInterval(fetchSolBalance, 10000);
     return () => clearInterval(interval);
   }, [publicKey]);
 
@@ -387,7 +408,21 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="space-y-4 pt-6">
+              <div className="space-y-4 pt-6 border-t border-white/5">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted">SOL Balance</span>
+                    <img 
+                      src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafkreihx2yxwcaucavhn7lf55mgi2jqwkf66sj4pmaucthokzgrjty525i" 
+                      alt="SOL" 
+                      className="w-3 h-3 rounded-full"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                  <span className="text-sm font-mono font-bold text-green-500">
+                    {solBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} SOL
+                  </span>
+                </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-muted">Current Hashpower</span>
                   <span className="text-sm font-mono font-bold"><AnimatedNumber value={user.hashpower} /> TH/s</span>

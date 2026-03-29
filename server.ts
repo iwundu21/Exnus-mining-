@@ -159,7 +159,7 @@ function now() {
 }
 
 function getCountdown() {
-  const nextBlockTimestamp = GENESIS_TIMESTAMP + (state.currentBlock + 1) * BLOCK_INTERVAL;
+  const nextBlockTimestamp = state.lastBlockTimestamp + BLOCK_INTERVAL;
   const remaining = nextBlockTimestamp - now();
   
   // If we are behind (remaining < 0), it should show 0 until processed
@@ -333,7 +333,8 @@ async function processBlock() {
       await setDoc(doc(db, 'status', 'global'), pack({
         currentBlock: state.currentBlock,
         lastBlockTimestamp: state.lastBlockTimestamp,
-        totalDistributed: state.totalDistributed
+        totalDistributed: state.totalDistributed,
+        genesisTimestamp: GENESIS_TIMESTAMP
       }));
     } catch (err) {
       console.error("❌ Firestore Error (status):", err);
@@ -424,7 +425,8 @@ async function processBlock() {
     await setDoc(doc(db, 'status', 'global'), pack({
       currentBlock: state.currentBlock,
       lastBlockTimestamp: state.lastBlockTimestamp,
-      totalDistributed: state.totalDistributed
+      totalDistributed: state.totalDistributed,
+      genesisTimestamp: GENESIS_TIMESTAMP
     }));
   } catch (err) {
     console.error("❌ Firestore Error (global):", err);
@@ -534,7 +536,7 @@ async function verifySolPayment(signature: string, amount: number, wallet: strin
 // Get SOL Balance
 app.get("/api/sol-balance/:wallet", async (req, res) => {
   const { wallet } = req.params;
-  const apiKey = process.env.ALCHEMY_API_KEY;
+  const apiKey = process.env.ALCHEMY_API_KEY || "BOTMZgnjnRcNK5cr21TnMAz64XAUbl_J";
   
   try {
     if (apiKey) {
