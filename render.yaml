@@ -11,4 +11,4 @@ services:
       - key: PORT
         value: 3000
       - key: GEMINI_API_KEY
-        fromContext: gemini-api-key
+        value: "YOUR_GEMINI_API_KEY"
