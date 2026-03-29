@@ -1,33 +1,84 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {wallet}
+    // Fields:
+    //   - wallet: string (required)
+    //   - hashpower: number (required)
+    //   - totalEarned: number (required)
+    //   - lastReward: number (optional)
+    //
+    // Collection: users/{wallet}/history
+    // Document ID: {blockId}
+    // Fields:
+    //   - blockNumber: number
+    //   - reward: number
+    //   - timestamp: number
+    //   - hashpower: number
+    //
+    // Collection: status
+    // Document ID: global
+    // Fields:
+    //   - currentBlock: number
+    //   - lastBlockTimestamp: number
+    //   - totalDistributed: number
+    //
+    // Collection: history
+    // Document ID: {auto-id}
+    // Fields:
+    //   - blockNumber: number
+    //   - timestamp: number
+    //   - reward: number
+    //   - totalHashpower: number
+    //   - activeMiners: number
+    //
+    // ===============================================================
+
     // Helper Functions
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    function isOwner(wallet) {
-      return true; // Simplified for Solana wallet-based app
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "mikeebube14@gmail.com" && request.auth.token.email_verified == true));
     }
 
+    // Rules
     match /users/{wallet} {
+      // Users can read their own profile
+      allow read: if true; // Publicly readable for leaderboard/status
+      
+      // Only the server (or admin) should write to these
+      // In this app, the Express server handles all writes.
+      // For security, we should ideally use a service account, 
+      // but since we're using the client SDK on the server, 
+      // we'll allow writes if they come from the server's context 
+      // (which we can't easily distinguish here without custom claims).
+      // For now, we'll allow writes to facilitate the demo, 
+      // but in production, these would be locked down.
+      allow write: if true; 
+
+      match /history/{blockId} {
+        allow read: if true;
+        allow write: if true;
+      }
+    }
+
+    match /status/global {
       allow read: if true;
-      allow write: if true; // In a production app, this should be restricted to server-side or authenticated users.
+      allow write: if true;
     }
 
     match /history/{blockId} {
       allow read: if true;
-      allow write: if true; // Temporary for prototype server access
-    }
-
-    match /system/state {
-      allow read: if true;
-      allow write: if true; // Temporary for prototype server access
-    }
-
-    match /signatures/{signature} {
-      allow read: if false;
-      allow write: if true; // In a production app, this should be restricted
+      allow write: if true;
     }
   }
 }

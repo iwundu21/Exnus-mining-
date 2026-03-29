@@ -2,9 +2,16 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { Connection } from "@solana/web3.js";
 import path from "path";
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc } from 'firebase/firestore';
+import firebaseConfig from './firebase-applet-config.json';
 
 const app = express();
 app.use(express.json());
+
+// Initialize Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 // ==========================================
 // CONFIG
@@ -23,7 +30,7 @@ const connection = new Connection("https://api.mainnet-beta.solana.com");
 const GENESIS_TIMESTAMP = 1774733400; 
 
 // ==========================================
-// STATE
+// STATE (Now backed by Firestore)
 // ==========================================
 let state = {
   currentBlock: 0,
@@ -33,6 +40,27 @@ let state = {
   usedSignatures: new Set<string>(), // prevent replay
   history: [] as any[], // store block history
 };
+
+// Sync state from Firestore on startup
+async function syncState() {
+  try {
+    const statusDoc = await getDoc(doc(db, 'status', 'global'));
+    if (statusDoc.exists()) {
+      const data = statusDoc.data();
+      state.currentBlock = data.currentBlock;
+      state.lastBlockTimestamp = data.lastBlockTimestamp;
+      state.totalDistributed = data.totalDistributed;
+    }
+
+    const usersSnap = await getDocs(collection(db, 'users'));
+    state.users = usersSnap.docs.map(d => d.data());
+
+    const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(50)));
+    state.history = historySnap.docs.map(d => d.data());
+  } catch (err) {
+    console.error("Error syncing state from Firestore:", err);
+  }
+}
 
 // ==========================================
 // TIME
@@ -52,12 +80,14 @@ function getCountdown() {
 // ==========================================
 // USER HELPER
 // ==========================================
-function getUser(wallet: string) {
+async function getUser(wallet: string) {
   let user = state.users.find((u) => u.wallet === wallet);
 
   if (!user) {
     user = { wallet, hashpower: 0, totalEarned: 0, history: [] };
     state.users.push(user);
+    // Save to Firestore
+    await setDoc(doc(db, 'users', wallet), user);
   }
 
   return user;
@@ -78,7 +108,7 @@ function getBlockReward() {
 // ==========================================
 // REWARD DISTRIBUTION
 // ==========================================
-function processBlock() {
+async function processBlock() {
   if (state.currentBlock >= TOTAL_BLOCKS) {
     console.log("⛔ Mining finished");
     return;
@@ -91,59 +121,110 @@ function processBlock() {
     0
   );
 
+  if (totalHashpower === 0) {
+    console.log(`[EXNUS ENGINE] Zero network hashpower detected. Block #${state.currentBlock} rewards deferred to maintain economic scarcity. Generating null-hash cryptographic record.`);
+    
+    for (const user of state.users) {
+      const record = {
+        blockNumber: state.currentBlock,
+        reward: 0,
+        timestamp: state.lastBlockTimestamp,
+        hashpower: user.hashpower,
+        note: "Empty Block - No Hashpower"
+      };
+      if (!user.history) user.history = [];
+      user.history.unshift(record);
+      if (user.history.length > 20) user.history.pop();
+      await addDoc(collection(db, 'users', user.wallet, 'history'), record);
+    }
+
+    const emptyBlockData = {
+      blockNumber: state.currentBlock,
+      timestamp: state.lastBlockTimestamp,
+      reward: 0,
+      totalHashpower: 0,
+      activeMiners: 0,
+      status: "DEFERRED"
+    };
+    state.history.unshift(emptyBlockData);
+    if (state.history.length > 50) state.history.pop();
+    await addDoc(collection(db, 'history'), emptyBlockData);
+
+    state.lastBlockTimestamp += BLOCK_INTERVAL;
+    await setDoc(doc(db, 'status', 'global'), {
+      currentBlock: state.currentBlock,
+      lastBlockTimestamp: state.lastBlockTimestamp,
+      totalDistributed: state.totalDistributed
+    });
+    return;
+  }
+
   console.log(`\n⛏ Block #${state.currentBlock}`);
   console.log(`Reward: ${blockReward.toFixed(4)}`);
 
-  state.users.forEach((user) => {
-    const reward = totalHashpower > 0 ? (user.hashpower / totalHashpower) * blockReward : 0;
-
-    user.totalEarned += reward;
-    state.totalDistributed += reward;
-
-    if (!user.history) user.history = [];
-    user.history.unshift({
-      blockNumber: state.currentBlock,
-      reward: reward,
-      timestamp: state.lastBlockTimestamp,
-      hashpower: user.hashpower
-    });
-
-    // Keep last 20 user history items
-    if (user.history.length > 20) user.history.pop();
-
-    console.log(
-      `💰 ${user.wallet} → ${reward.toFixed(4)}`
-    );
-  });
-
-  state.history.unshift({
+  const blockData = {
     blockNumber: state.currentBlock,
     timestamp: state.lastBlockTimestamp,
     reward: blockReward,
     totalHashpower: totalHashpower,
     activeMiners: state.users.filter(u => u.hashpower > 0).length,
-  });
+  };
 
-  // Keep only the last 50 blocks in history to prevent memory leak
-  if (state.history.length > 50) {
-    state.history.pop();
+  // Update users and their history in Firestore
+  for (const user of state.users) {
+    const reward = totalHashpower > 0 ? (user.hashpower / totalHashpower) * blockReward : 0;
+
+    user.totalEarned += reward;
+    state.totalDistributed += reward;
+
+    const record = {
+      blockNumber: state.currentBlock,
+      reward: reward,
+      timestamp: state.lastBlockTimestamp,
+      hashpower: user.hashpower
+    };
+
+    if (!user.history) user.history = [];
+    user.history.unshift(record);
+    if (user.history.length > 20) user.history.pop();
+
+    // Persist user update and history record
+    await updateDoc(doc(db, 'users', user.wallet), {
+      totalEarned: user.totalEarned,
+      lastReward: reward
+    });
+    await addDoc(collection(db, 'users', user.wallet, 'history'), record);
+
+    console.log(`💰 ${user.wallet} → ${reward.toFixed(4)}`);
   }
 
+  state.history.unshift(blockData);
+  if (state.history.length > 50) state.history.pop();
+
+  // Persist global history and status
+  await addDoc(collection(db, 'history'), blockData);
+  
   state.currentBlock++;
   state.lastBlockTimestamp += BLOCK_INTERVAL;
+
+  await setDoc(doc(db, 'status', 'global'), {
+    currentBlock: state.currentBlock,
+    lastBlockTimestamp: state.lastBlockTimestamp,
+    totalDistributed: state.totalDistributed
+  });
 }
 
 // ==========================================
 // AUTO ENGINE
 // ==========================================
-function checkBlocks() {
+async function checkBlocks() {
   const diff = now() - state.lastBlockTimestamp;
   if (diff < 0) return; // Not started yet
 
   const blocks = Math.floor(diff / BLOCK_INTERVAL);
 
   for (let i = 0; i < blocks; i++) {
-    processBlock();
+    await processBlock();
   }
 }
 
@@ -212,9 +293,12 @@ app.get("/api/status", (req, res) => {
 });
 
 // Get User
-app.get("/api/user/:wallet", (req, res) => {
-  const user = getUser(req.params.wallet);
-  res.json(user);
+app.get("/api/user/:wallet", async (req, res) => {
+  const user = await getUser(req.params.wallet);
+  // Fetch history from Firestore for this user
+  const historySnap = await getDocs(query(collection(db, 'users', user.wallet, 'history'), orderBy('blockNumber', 'desc'), limit(20)));
+  const history = historySnap.docs.map(d => d.data());
+  res.json({ ...user, history });
 });
 
 // Buy hashpower
@@ -235,10 +319,13 @@ app.post("/api/buy-hashpower", async (req, res) => {
     return res.status(400).json({ error: "Invalid payment" });
   }
 
-  const user = getUser(wallet);
+  const user = await getUser(wallet);
 
   const hp = solAmount * HASHPOWER_PER_SOL;
   user.hashpower += hp;
+
+  // Persist update
+  await updateDoc(doc(db, 'users', wallet), { hashpower: user.hashpower });
 
   res.json({
     message: "Hashpower added",
@@ -248,11 +335,13 @@ app.post("/api/buy-hashpower", async (req, res) => {
 });
 
 // Manual hashpower
-app.post("/api/set-hashpower", (req, res) => {
+app.post("/api/set-hashpower", async (req, res) => {
   const { wallet, hashpower } = req.body;
 
-  const user = getUser(wallet);
+  const user = await getUser(wallet);
   user.hashpower = hashpower;
+  
+  await updateDoc(doc(db, 'users', wallet), { hashpower: user.hashpower });
 
   res.json(user);
 });
@@ -276,6 +365,13 @@ app.get("/api/history", (req, res) => {
 // ==========================================
 async function startServer() {
   const PORT = 3000;
+
+  // Sync state from Firestore
+  await syncState();
+
+  // Initial check
+  await checkBlocks();
+  setInterval(checkBlocks, 5000);
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

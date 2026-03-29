@@ -1,51 +1,53 @@
 {
   "entities": {
     "User": {
-      "title": "User",
-      "description": "Mining user data",
+      "title": "User Profile",
+      "description": "Stores user mining data and total earnings.",
       "type": "object",
       "properties": {
-        "wallet": { "type": "string" },
-        "hashpower": { "type": "number" },
-        "totalEarned": { "type": "number" },
-        "rewardDebt": { "type": "number" },
-        "lastReward": { "type": "number" }
+        "wallet": { "type": "string", "description": "Solana wallet address" },
+        "hashpower": { "type": "number", "description": "Current mining power in TH/s" },
+        "totalEarned": { "type": "number", "description": "Total EXN rewards earned" },
+        "lastReward": { "type": "number", "description": "Amount from the last block reward" }
       },
-      "required": ["wallet", "hashpower", "totalEarned", "rewardDebt"]
+      "required": ["wallet", "hashpower", "totalEarned"]
     },
-    "Block": {
-      "title": "Block",
-      "description": "Mining block history",
+    "MiningRecord": {
+      "title": "Mining Record",
+      "description": "A single block reward distribution record for a user.",
       "type": "object",
       "properties": {
         "blockNumber": { "type": "number" },
-        "timestamp": { "type": "number" },
         "reward": { "type": "number" },
-        "totalHashpower": { "type": "number" }
+        "timestamp": { "type": "number" },
+        "hashpower": { "type": "number" }
       },
-      "required": ["blockNumber", "timestamp", "reward", "totalHashpower"]
+      "required": ["blockNumber", "reward", "timestamp", "hashpower"]
+    },
+    "NetworkStatus": {
+      "title": "Network Status",
+      "description": "Global state of the mining network.",
+      "type": "object",
+      "properties": {
+        "currentBlock": { "type": "number" },
+        "lastBlockTimestamp": { "type": "number" },
+        "totalDistributed": { "type": "number" }
+      },
+      "required": ["currentBlock", "lastBlockTimestamp", "totalDistributed"]
     }
   },
   "firestore": {
     "/users/{wallet}": {
       "schema": "User",
-      "description": "User mining profiles"
+      "description": "User profiles indexed by wallet address"
     },
-    "/history/{blockNumber}": {
-      "schema": "Block",
-      "description": "Mining block history"
+    "/users/{wallet}/history/{blockId}": {
+      "schema": "MiningRecord",
+      "description": "Per-user mining history"
     },
-    "/system/state": {
-      "schema": {
-        "type": "object",
-        "properties": {
-          "lastProcessedBlock": { "type": "number" },
-          "accRewardPerShare": { "type": "number" },
-          "totalHashpower": { "type": "number" },
-          "totalDistributed": { "type": "number" }
-        }
-      },
-      "description": "Global engine state"
+    "/status/global": {
+      "schema": "NetworkStatus",
+      "description": "Global network state"
     }
   }
 }

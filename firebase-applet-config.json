@@ -1,8 +1,10 @@
 {
-  "apiKey": "AIzaSyA5iPFK36HxVZf9CdxaWeSH9q_qTOByWZc",
-  "authDomain": "exnus-mining-2.firebaseapp.com",
-  "projectId": "exnus-mining-2",
-  "storageBucket": "exnus-mining-2.firebasestorage.app",
-  "messagingSenderId": "310981218438",
-  "appId": "1:310981218438:web:b0177d9a4f236b7c4cc107"
+  "projectId": "exnus-point",
+  "appId": "1:204029135425:web:5f61ccd928ad88687554c0",
+  "apiKey": "AIzaSyCC9_KJ7rzQSTEcUEDQ8cFKYaHT0ppEPMk",
+  "authDomain": "exnus-point.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-639ea0d8-f541-44d3-a197-6d9e6f56c605",
+  "storageBucket": "exnus-point.firebasestorage.app",
+  "messagingSenderId": "204029135425",
+  "measurementId": ""
 }
