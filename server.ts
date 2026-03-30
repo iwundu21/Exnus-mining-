@@ -70,6 +70,41 @@ function unpack(data: any) {
   return data;
 }
 
+async function clearMiningData() {
+  console.log("🧹 Clearing mining data...");
+  
+  // 1. Reset memory state
+  state.users = [];
+  state.history = [];
+  state.usedSignatures = new Set();
+  state.totalDistributed = 0;
+  
+  // 2. Clear Firestore collections
+  // Clear 'users'
+  const usersSnap = await getDocs(collection(db, 'users'));
+  for (const d of usersSnap.docs) {
+    // Clear user history subcollection
+    const userHistorySnap = await getDocs(collection(db, 'users', d.id, 'history'));
+    for (const uh of userHistorySnap.docs) {
+      await deleteDoc(doc(db, 'users', d.id, 'history', uh.id));
+    }
+    await deleteDoc(doc(db, 'users', d.id));
+  }
+  
+  // Clear 'history'
+  const historySnap = await getDocs(collection(db, 'history'));
+  for (const d of historySnap.docs) {
+    // Clear rewards subcollection
+    const rewardsSnap = await getDocs(collection(db, 'history', d.id, 'rewards'));
+    for (const r of rewardsSnap.docs) {
+      await deleteDoc(doc(db, 'history', d.id, 'rewards', r.id));
+    }
+    await deleteDoc(doc(db, 'history', d.id));
+  }
+  
+  console.log("✅ Mining data cleared.");
+}
+
 const app = express();
 app.use(express.json());
 
@@ -95,6 +130,7 @@ let state = {
   users: [] as any[],
   usedSignatures: new Set<string>(), // prevent replay
   history: [] as any[], // store block history
+  genesisBlock: 0,
 };
 
 // Sync state from Firestore on startup
@@ -131,6 +167,7 @@ async function syncState() {
             state.currentBlock = Number(data.currentBlock) || 0;
             state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
             state.totalDistributed = Number(data.totalDistributed) || 0;
+            state.genesisBlock = Number(data.genesisBlock) || 0;
           }
         }
 
@@ -529,7 +566,7 @@ app.get("/api/status", (req, res) => {
   console.log(`[DEBUG] /api/status: now=${now()}, lastBlock=${state.lastBlockTimestamp}, diff=${now() - state.lastBlockTimestamp}, countdown=${countdown}`);
   
   res.json({
-    currentBlock: state.currentBlock,
+    currentBlock: state.currentBlock - state.genesisBlock,
     totalBlocks: TOTAL_BLOCKS,
     countdown: getCountdown(),
     blockReward: getBlockReward(),
@@ -727,16 +764,18 @@ app.post("/api/admin/set-genesis", async (req, res) => {
 
     console.log(`⚠️ Admin requested to change genesis timestamp to ${newGenesis}.`);
     
+    await clearMiningData();
+    
     GENESIS_TIMESTAMP = newGenesis;
-    state.currentBlock = 0;
-    state.lastBlockTimestamp = newGenesis;
+    state.genesisBlock = state.currentBlock;
     
     // Update global status
     await setDoc(doc(db, 'status', 'global'), pack({
       currentBlock: state.currentBlock,
       lastBlockTimestamp: state.lastBlockTimestamp,
       totalDistributed: state.totalDistributed,
-      genesisTimestamp: GENESIS_TIMESTAMP
+      genesisTimestamp: GENESIS_TIMESTAMP,
+      genesisBlock: state.genesisBlock
     }));
 
     console.log(`✅ Genesis timestamp updated successfully.`);
@@ -806,11 +845,10 @@ app.post("/api/admin/factory-reset", async (req, res) => {
     // 1. Reset memory state
     const currentTime = now();
     GENESIS_TIMESTAMP = currentTime;
-    state.users = [];
-    state.history = [];
-    state.usedSignatures = new Set();
+    
+    await clearMiningData();
+    
     state.currentBlock = 0;
-    state.totalDistributed = 0;
     state.lastBlockTimestamp = currentTime; // New genesis is NOW
 
     // 2. Clear Firestore collections
@@ -821,32 +859,13 @@ app.post("/api/admin/factory-reset", async (req, res) => {
       totalDistributed: 0,
       genesisTimestamp: currentTime
     }));
-    // Clear 'users'
-    const usersSnap = await getDocs(collection(db, 'users'));
-    for (const d of usersSnap.docs) {
-      // Clear user history subcollection
-      const userHistorySnap = await getDocs(collection(db, 'users', d.id, 'history'));
-      for (const uh of userHistorySnap.docs) {
-        await deleteDoc(doc(db, 'users', d.id, 'history', uh.id));
-      }
-      await deleteDoc(doc(db, 'users', d.id));
-    }
-
-    // Clear 'history'
-    const historySnap = await getDocs(collection(db, 'history'));
-    for (const d of historySnap.docs) {
-      // Clear rewards subcollection
-      const rewardsSnap = await getDocs(collection(db, 'history', d.id, 'rewards'));
-      for (const r of rewardsSnap.docs) {
-        await deleteDoc(doc(db, 'history', d.id, 'rewards', r.id));
-      }
-      await deleteDoc(doc(db, 'history', d.id));
-    }
-
+    
     // Clear 'status'
     const statusSnap = await getDocs(collection(db, 'status'));
     for (const d of statusSnap.docs) {
-      await deleteDoc(doc(db, 'status', d.id));
+      if (d.id !== 'global') {
+        await deleteDoc(doc(db, 'status', d.id));
+      }
     }
 
     // 3. Save new global status
