@@ -6,19 +6,20 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", monospace;
   
-  --color-background: #0a0a0a;
-  --color-surface: #141414;
-  --color-primary: #8B1F30;
-  --color-accent: #A52A3C;
-  --color-text: #FFFFFF;
-  --color-muted: #666666;
-  --color-line: #222222;
+  --color-background: #111111;
+  --color-surface: #1a1a1a;
+  --color-primary: #e63946;
+  --color-accent: #ff4d4d;
+  --color-text: #f8f9fa;
+  --color-muted: #adb5bd;
+  --color-line: #343a40;
 }
 
 @layer base {
   body {
     @apply text-text font-sans antialiased overflow-x-hidden min-h-screen;
-    background-color: var(--color-background);
+    background: radial-gradient(circle at top center, #1a1a1a 0%, var(--color-background) 100%);
+    background-attachment: fixed;
   }
   
   h1, h2, h3, h4, h5, h6 {
@@ -71,7 +72,7 @@
 }
 
 .data-card {
-  @apply bg-surface border border-line p-6 space-y-2 rounded-xl transition-all duration-300 hover:border-primary/50;
+  @apply bg-surface/80 backdrop-blur-md border border-line p-6 space-y-2 rounded-xl transition-all duration-300 hover:border-primary/50 hover:shadow-[0_0_20px_rgba(196,30,58,0.1)];
 }
 
 .data-value {

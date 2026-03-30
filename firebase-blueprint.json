@@ -24,6 +24,19 @@
       },
       "required": ["blockNumber", "reward", "timestamp", "hashpower"]
     },
+    "Purchase": {
+      "title": "Purchase Record",
+      "description": "A record of a hashpower purchase.",
+      "type": "object",
+      "properties": {
+        "wallet": { "type": "string", "description": "Solana wallet address" },
+        "solAmount": { "type": "number", "description": "Amount of SOL spent" },
+        "hashpowerAdded": { "type": "number", "description": "Hashpower added" },
+        "timestamp": { "type": "number", "description": "Purchase timestamp" },
+        "signature": { "type": "string", "description": "Transaction signature" }
+      },
+      "required": ["wallet", "solAmount", "hashpowerAdded", "timestamp", "signature"]
+    },
     "NetworkStatus": {
       "title": "Network Status",
       "description": "Global state of the mining network.",
@@ -44,6 +57,10 @@
     "/users/{wallet}/history/{blockId}": {
       "schema": "MiningRecord",
       "description": "Per-user mining history"
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "Purchase",
+      "description": "Global purchase history"
     },
     "/status/global": {
       "schema": "NetworkStatus",

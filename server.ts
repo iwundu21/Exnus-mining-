@@ -7,7 +7,7 @@ import fs from "fs";
 import axios from "axios";
 import crypto from "crypto";
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, where } from 'firebase/firestore';
 
 import { 
   BLOCK_INTERVAL, 
@@ -98,7 +98,10 @@ let state = {
 };
 
 // Sync state from Firestore on startup
+let initialSyncDone = false;
 async function syncState() {
+  if (initialSyncDone && isChecking) return; // Don't sync while mining is in progress
+  
   console.log("📦 Starting syncState...");
   const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("Sync timeout")), 10000));
   
@@ -110,56 +113,46 @@ async function syncState() {
           const data = unpack(statusDoc.data());
           const firestoreGenesis = Number(data.genesisTimestamp);
           
-          if (firestoreGenesis && firestoreGenesis !== DEFAULT_GENESIS_TIMESTAMP) {
-            console.log(`🚨 Genesis mismatch! Firestore: ${firestoreGenesis}, Code: ${DEFAULT_GENESIS_TIMESTAMP}. Resetting Firestore state...`);
-            // Reset Firestore global status
+          if (firestoreGenesis) {
+            GENESIS_TIMESTAMP = firestoreGenesis;
+          } else {
+            // Initialize if not present
             await setDoc(doc(db, 'status', 'global'), pack({
               currentBlock: 0,
               lastBlockTimestamp: DEFAULT_GENESIS_TIMESTAMP,
               totalDistributed: 0,
               genesisTimestamp: DEFAULT_GENESIS_TIMESTAMP
             }));
-            
             GENESIS_TIMESTAMP = DEFAULT_GENESIS_TIMESTAMP;
-            state.currentBlock = 0;
-            state.lastBlockTimestamp = DEFAULT_GENESIS_TIMESTAMP;
-            state.totalDistributed = 0;
-            
-            // Note: We don't automatically delete all users here to avoid accidental data loss,
-            // but we reset their mining progress if needed.
-            // For a full reset, the admin should use /api/admin/factory-reset
-          } else {
-            if (data.genesisTimestamp) {
-              GENESIS_TIMESTAMP = Number(data.genesisTimestamp);
-            }
+          }
+          
+          // Only overwrite global state if we haven't started mining or if it's the first sync
+          if (!initialSyncDone) {
             state.currentBlock = Number(data.currentBlock) || 0;
             state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
             state.totalDistributed = Number(data.totalDistributed) || 0;
-          }
-          
-          const expectedTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
-          if (Math.abs(state.lastBlockTimestamp - expectedTimestamp) > BLOCK_INTERVAL) {
-            console.warn(`[EXNUS] Timestamp inconsistency detected. Expected ${expectedTimestamp}, got ${state.lastBlockTimestamp}. Resetting...`);
-            state.lastBlockTimestamp = expectedTimestamp;
           }
         }
 
         const usersSnap = await getDocs(collection(db, 'users'));
         const users = usersSnap.docs.map(d => unpack(d.data()));
         
-        // Merge with local state to avoid losing in-memory updates
+        // Merge with local state
         users.forEach(u => {
           const existing = state.users.find(eu => eu.wallet === u.wallet);
           if (!existing) {
             state.users.push(u);
-          } else {
-            // Update existing user data if Firestore is newer (optional, but good for consistency)
+          } else if (!initialSyncDone) {
+            // Only overwrite existing users on first sync to avoid losing in-memory updates
             Object.assign(existing, u);
           }
         });
 
-        const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
-        state.history = historySnap.docs.map(d => unpack(d.data())).slice(0, 50);
+        if (!initialSyncDone) {
+          const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(100)));
+          state.history = historySnap.docs.map(d => unpack(d.data())).slice(0, 50);
+          initialSyncDone = true;
+        }
       })(),
       timeout
     ]);
@@ -177,14 +170,12 @@ function now() {
 }
 
 function getCountdown() {
-  const nextBlockTimestamp = state.lastBlockTimestamp + BLOCK_INTERVAL;
+  // The next block to be mined is state.currentBlock
+  const nextBlockTimestamp = GENESIS_TIMESTAMP + (state.currentBlock * BLOCK_INTERVAL);
   const remaining = nextBlockTimestamp - now();
   
   // If we are behind (remaining < 0), it should show 0 until processed
   if (remaining < 0) return 0;
-  
-  // If it's more than the interval, something is wrong with our state, return 0 or interval
-  if (remaining > BLOCK_INTERVAL) return BLOCK_INTERVAL;
   
   return remaining;
 }
@@ -221,24 +212,13 @@ async function getUser(wallet: string, req?: any) {
       solSpent: 0,
       referralCount: 0,
       referralRewards: 0,
+      referralBonusClaimed: false,
       referredBy: req?.query?.ref || null, // This will now be a referralId
       ip: req?.ip || req?.headers['x-forwarded-for'] || 'unknown',
       country: 'Unknown',
       countryCode: 'UN'
     };
     isNew = true;
-
-    // If referred by someone, increment their referral count
-    if (user.referredBy) {
-      // Find referrer by referralId instead of wallet
-      const referrer = state.users.find(u => u.referralId === user.referredBy);
-      if (referrer) {
-        referrer.referralCount = (referrer.referralCount || 0) + 1;
-        // Give referrer a small hashpower bonus? (e.g. 0.1 TH/s)
-        referrer.hashpower = (referrer.hashpower || 0) + 0.1;
-        await saveUser(referrer);
-      }
-    }
   }
 
   // Ensure existing users have a referralId
@@ -407,13 +387,21 @@ async function checkBlocks() {
   if (isChecking) return;
   isChecking = true;
   try {
-    const currentTime = now();
     // Deterministic target block calculation based on time elapsed since genesis
-    const targetBlock = Math.floor((currentTime - GENESIS_TIMESTAMP) / BLOCK_INTERVAL);
+    const currentTime = now();
+    const timeElapsed = currentTime - GENESIS_TIMESTAMP;
+    
+    // If we haven't reached genesis yet, do nothing
+    if (timeElapsed < 0) {
+      isChecking = false;
+      return;
+    }
+
+    const targetBlock = Math.floor(timeElapsed / BLOCK_INTERVAL);
     
     // If currentBlock is behind targetBlock, mine the missed blocks
     if (state.currentBlock <= targetBlock) {
-      const blocksToMine = Math.min(targetBlock - state.currentBlock + 1, 10); // Max 10 at a time
+      const blocksToMine = Math.min(targetBlock - state.currentBlock + 1, 100); // Max 100 at a time for stability
       if (blocksToMine > 0) {
         console.log(`[EXNUS ENGINE] Catching up: current=${state.currentBlock}, target=${targetBlock}, mining=${blocksToMine}`);
         for (let i = 0; i < blocksToMine; i++) {
@@ -590,6 +578,19 @@ app.get("/api/user/:wallet", async (req, res) => {
   }
 });
 
+// Get Purchase History
+app.get("/api/purchases/:wallet", async (req, res) => {
+  const { wallet } = req.params;
+  try {
+    const purchasesSnap = await getDocs(query(collection(db, 'purchases'), where('wallet', '==', wallet), orderBy('timestamp', 'desc')));
+    const purchases = purchasesSnap.docs.map(d => unpack(d.data()));
+    res.json(purchases);
+  } catch (err) {
+    console.error(`Error fetching purchases for ${wallet}:`, err);
+    res.status(500).json({ error: "Failed to fetch purchases" });
+  }
+});
+
 // Buy hashpower
 app.post("/api/buy-hashpower", async (req, res) => {
   const { wallet, signature, solAmount } = req.body;
@@ -633,8 +634,38 @@ app.post("/api/buy-hashpower", async (req, res) => {
   user.hashpower += hp;
   user.solSpent = (user.solSpent || 0) + solAmount;
 
+  // Referral Bonus Logic: Both earn 0.004 TH/s after referred user's first purchase
+  if (user.referredBy && !user.referralBonusClaimed) {
+    const referrer = state.users.find(u => u.referralId === user.referredBy);
+    if (referrer) {
+      const BONUS = 0.004;
+      referrer.hashpower = (referrer.hashpower || 0) + BONUS;
+      referrer.referralCount = (referrer.referralCount || 0) + 1;
+      referrer.referralRewards = (referrer.referralRewards || 0) + BONUS;
+      
+      user.hashpower += BONUS;
+      user.referralBonusClaimed = true;
+      
+      console.log(`🎁 Referral Bonus Applied: ${user.wallet} and ${referrer.wallet} both received ${BONUS} TH/s`);
+      await saveUser(referrer);
+    }
+  }
+
   // Persist update
   await saveUser(user);
+
+  // Persist purchase record
+  try {
+    await addDoc(collection(db, 'purchases'), pack({
+      wallet,
+      solAmount,
+      hashpowerAdded: hp,
+      timestamp: now(),
+      signature
+    }));
+  } catch (err) {
+    console.error(`❌ Firestore Error (savePurchase ${wallet}):`, err);
+  }
 
   res.json({
     message: "Hashpower added",
@@ -678,6 +709,42 @@ app.get("/api/config", (req, res) => {
   res.json({
     treasuryWallet: TREASURY_WALLET
   });
+});
+
+// Set Genesis Timestamp
+app.post("/api/admin/set-genesis", async (req, res) => {
+  const { adminWallet, genesisTimestamp } = req.body;
+
+  if (adminWallet !== ADMIN_WALLET) {
+    return res.status(403).json({ error: "Unauthorized access. Admin only." });
+  }
+
+  try {
+    const newGenesis = Number(genesisTimestamp);
+    if (isNaN(newGenesis) || newGenesis <= 0) {
+      return res.status(400).json({ error: "Invalid genesis timestamp." });
+    }
+
+    console.log(`⚠️ Admin requested to change genesis timestamp to ${newGenesis}.`);
+    
+    GENESIS_TIMESTAMP = newGenesis;
+    state.currentBlock = 0;
+    state.lastBlockTimestamp = newGenesis;
+    
+    // Update global status
+    await setDoc(doc(db, 'status', 'global'), pack({
+      currentBlock: state.currentBlock,
+      lastBlockTimestamp: state.lastBlockTimestamp,
+      totalDistributed: state.totalDistributed,
+      genesisTimestamp: GENESIS_TIMESTAMP
+    }));
+
+    console.log(`✅ Genesis timestamp updated successfully.`);
+    res.json({ success: true, message: "Genesis timestamp updated successfully", genesisTimestamp: GENESIS_TIMESTAMP });
+  } catch (err) {
+    console.error("❌ Failed to update genesis timestamp:", err);
+    res.status(500).json({ error: "Failed to update genesis timestamp" });
+  }
 });
 
 // Clear History
@@ -839,7 +906,7 @@ async function startServer() {
     (async () => {
       console.log("🔍 Running initial block check...");
       await checkBlocks();
-      setInterval(checkBlocks, 5000);
+      setInterval(checkBlocks, 1000);
       
       // Periodic user sync (every 30 seconds)
       setInterval(syncState, 30000);

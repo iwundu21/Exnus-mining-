@@ -3,11 +3,12 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
-import { Cpu, Timer, Database, TrendingUp, Users, Wallet, ArrowUp, ArrowDown, Coins } from 'lucide-react';
+import { Cpu, Timer, Database, TrendingUp, Users, Wallet, ArrowUp, ArrowDown, Coins, Info } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatNumber, cn } from '../lib/utils';
 import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/constants';
 import BuyHashpowerDialog from './BuyHashpowerDialog';
+import Onboarding from './Onboarding';
 
 interface Status {
   currentBlock: number;
@@ -49,6 +50,14 @@ export default function Dashboard() {
   const [history, setHistory] = useState<any[]>([]);
   const [difficulty, setDifficulty] = useState<string>('84.2P');
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+
+  useEffect(() => {
+    const hasSeenOnboarding = localStorage.getItem('exnus_onboarding_seen');
+    if (!hasSeenOnboarding) {
+      setIsOnboardingOpen(true);
+    }
+  }, []);
 
   const formatDifficulty = (diff: number) => {
     if (diff >= 1e15) return (diff / 1e15).toFixed(1) + 'P';
@@ -106,7 +115,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 5000);
+    const interval = setInterval(fetchData, 1000);
     return () => clearInterval(interval);
   }, [publicKey]);
 
@@ -155,7 +164,6 @@ export default function Dashboard() {
     const timer = setInterval(() => {
       setStatus(prev => {
         if (!prev) return prev;
-        if (prev.countdown > 0) playTick(); // Play sound
         return { ...prev, countdown: Math.max(0, prev.countdown - 1) };
       });
     }, 1000);
@@ -164,6 +172,22 @@ export default function Dashboard() {
 
   const formatTime = (seconds: number | undefined | null) => {
     if (seconds === undefined || seconds === null || isNaN(seconds)) return '0:00';
+    
+    if (seconds >= 86400) {
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return `${d}d ${h}h ${m}m ${s}s`;
+    }
+    
+    if (seconds >= 3600) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m}:${s.toString().padStart(2, '0')}`;
@@ -177,6 +201,11 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-12">
+      <AnimatePresence>
+        {isOnboardingOpen && (
+          <Onboarding onComplete={() => setIsOnboardingOpen(false)} />
+        )}
+      </AnimatePresence>
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -185,6 +214,13 @@ export default function Dashboard() {
           </div>
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight">Overview</h2>
         </div>
+        <button 
+          onClick={() => setIsOnboardingOpen(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-xs font-bold text-white/60 hover:text-white self-start md:self-end"
+        >
+          <Info size={14} />
+          Tutorial
+        </button>
       </header>
 
       {/* Main Stats Grid */}
@@ -209,7 +245,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between data-label">
             <div className="flex items-center gap-2">
               <Timer size={14} />
-              <span>Next Reward</span>
+              <span>{status?.currentBlock === 0 ? 'Mining Starts In' : 'Next Reward'}</span>
             </div>
             <span className="text-primary font-mono text-xl">
               {status ? formatTime(status.countdown) : '0:00'}

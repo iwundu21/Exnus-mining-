@@ -39,6 +39,10 @@ export default function AdminDashboard() {
   const [resettingFactory, setResettingFactory] = useState(false);
   const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [genesisDatetime, setGenesisDatetime] = useState('');
+  const [settingGenesis, setSettingGenesis] = useState(false);
+  const [genesisMessage, setGenesisMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
   useEffect(() => {
     if (publicKey) {
       fetchMiners();
@@ -88,6 +92,34 @@ export default function AdminDashboard() {
       setResetMessage({ type: 'error', text: 'Failed to factory reset. Please try again.' });
     } finally {
       setResettingFactory(false);
+    }
+  };
+
+  const handleSetGenesis = async () => {
+    if (!publicKey || !genesisDatetime) return;
+    
+    setSettingGenesis(true);
+    setGenesisMessage(null);
+    
+    try {
+      const timestamp = Math.floor(new Date(genesisDatetime).getTime() / 1000);
+      
+      if (isNaN(timestamp)) {
+        throw new Error("Invalid date/time format");
+      }
+
+      await axios.post('/api/admin/set-genesis', { 
+        adminWallet: publicKey.toString(),
+        genesisTimestamp: timestamp
+      });
+      
+      setGenesisMessage({ type: 'success', text: 'Genesis timestamp updated successfully.' });
+      setGenesisDatetime('');
+    } catch (err) {
+      console.error('Failed to set genesis:', err);
+      setGenesisMessage({ type: 'error', text: 'Failed to update genesis timestamp.' });
+    } finally {
+      setSettingGenesis(false);
     }
   };
 
@@ -342,6 +374,46 @@ export default function AdminDashboard() {
               </div>
             )}
           </AnimatePresence>
+
+          {/* Genesis Timestamp Panel */}
+          <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4 mt-8">
+            <div className="space-y-2">
+              <h3 className="font-bold text-primary flex items-center gap-2">
+                <Zap size={18} />
+                Set Genesis Time
+              </h3>
+              <p className="text-xs text-muted leading-relaxed">
+                Change the server's starting date and time. This affects block calculation and countdowns.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <input 
+                type="datetime-local" 
+                value={genesisDatetime}
+                onChange={(e) => setGenesisDatetime(e.target.value)}
+                className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm focus:outline-none focus:border-primary/50 text-white"
+              />
+              <button 
+                onClick={handleSetGenesis}
+                disabled={settingGenesis || !genesisDatetime}
+                className="w-full py-3 bg-primary/20 text-primary rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-primary/30 transition-all border border-primary/30 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {settingGenesis ? <Loader2 className="animate-spin" size={14} /> : 'Update Genesis Time'}
+              </button>
+            </div>
+
+            {genesisMessage && (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`p-3 rounded-lg flex items-start gap-2 text-xs ${genesisMessage.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
+              >
+                {genesisMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
+                <span>{genesisMessage.text}</span>
+              </motion.div>
+            )}
+          </div>
 
           {/* Clear History Panel */}
           <div className="p-6 bg-red-500/5 border border-red-500/20 rounded-2xl space-y-4 mt-8">

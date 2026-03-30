@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Share2, Copy, Check, Users, Gift, TrendingUp, ExternalLink } from 'lucide-react';
+import { Copy, Check, ChevronDown } from 'lucide-react';
 import axios from 'axios';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
 export default function Referral() {
@@ -48,22 +48,37 @@ export default function Referral() {
     {
       label: "Total Referrals",
       value: userData?.referralCount || 0,
-      icon: Users,
-      color: "text-blue-400"
     },
     {
       label: "Referral Bonus",
-      value: `${((userData?.referralCount || 0) * 0.1).toFixed(1)} TH/s`,
-      icon: TrendingUp,
-      color: "text-green-400"
+      value: `${((userData?.referralCount || 0) * 0.004).toFixed(3)} TH/s`,
     },
     {
       label: "Program Status",
       value: "Active",
-      icon: Check,
-      color: "text-primary"
     }
   ];
+
+  const faqs = [
+    {
+      question: "How are referrals tracked?",
+      answer: "Referrals are tracked via your unique referral ID embedded in your link. When a new user visits the site using your link, their browser stores your ID in session storage. When they connect their wallet for the first time, our system permanently links them to your account."
+    },
+    {
+      question: "When are bonuses applied?",
+      answer: "Referral bonuses are applied instantly after your referred friend makes their first hashpower purchase. Both you and your friend will receive a 0.004 TH/s bonus immediately."
+    },
+    {
+      question: "Is there a limit to referrals?",
+      answer: "No, there is absolutely no limit. You can refer as many people as you want and accumulate unlimited hashpower bonuses. Some of our top users have earned over 10 TH/s purely through referrals."
+    },
+    {
+      question: "Do I need to purchase hashpower to refer?",
+      answer: "No, you don't need to purchase anything. You can start referring friends as soon as you connect your wallet. This is a great way to start mining EXN for free."
+    }
+  ];
+
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   return (
     <div className="space-y-8">
@@ -78,15 +93,11 @@ export default function Referral() {
         {/* Main Referral Card */}
         <div className="lg:col-span-2 space-y-6">
           <div className="card p-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-              <Gift size={120} />
-            </div>
-            
             <div className="relative z-10">
               <h3 className="text-xl font-bold mb-4">Your Referral Link</h3>
               <p className="text-muted text-sm mb-6 max-w-md">
-                Share your unique link with friends. For every friend who joins using your link, 
-                you'll receive a permanent <span className="text-primary font-bold">0.1 TH/s</span> hashpower boost.
+                Share your unique link with friends. When a friend joins and makes their first purchase, 
+                you both receive a permanent <span className="text-primary font-bold">0.004 TH/s</span> hashpower boost.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-3">
@@ -117,9 +128,6 @@ export default function Referral() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {stats.map((stat, i) => (
               <div key={i} className="card p-6 flex flex-col items-center text-center">
-                <div className={cn("p-3 rounded-full bg-white/5 mb-4", stat.color)}>
-                  <stat.icon size={24} />
-                </div>
                 <span className="text-[10px] text-muted uppercase tracking-widest font-bold mb-1">{stat.label}</span>
                 <span className="text-xl font-bold">{stat.value}</span>
               </div>
@@ -130,8 +138,7 @@ export default function Referral() {
         {/* How it works */}
         <div className="space-y-6">
           <div className="card p-6">
-            <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-              <TrendingUp size={18} className="text-primary" />
+            <h3 className="text-lg font-bold mb-6">
               How it works
             </h3>
             
@@ -147,16 +154,16 @@ export default function Referral() {
               <div className="flex gap-4">
                 <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold shrink-0">2</div>
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-tight">Friend Joins</h4>
-                  <p className="text-xs text-muted mt-1 leading-relaxed">Your friend connects their wallet for the first time using your link.</p>
+                  <h4 className="text-sm font-bold uppercase tracking-tight">Friend Purchases</h4>
+                  <p className="text-xs text-muted mt-1 leading-relaxed">Your friend connects their wallet and purchases any amount of hashpower.</p>
                 </div>
               </div>
               
               <div className="flex gap-4">
                 <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold shrink-0">3</div>
                 <div>
-                  <h4 className="text-sm font-bold uppercase tracking-tight">Earn Rewards</h4>
-                  <p className="text-xs text-muted mt-1 leading-relaxed">You instantly receive 0.1 TH/s hashpower for every successful referral.</p>
+                  <h4 className="text-sm font-bold uppercase tracking-tight">Both Earn Rewards</h4>
+                  <p className="text-xs text-muted mt-1 leading-relaxed">You and your friend both receive 0.004 TH/s hashpower instantly.</p>
                 </div>
               </div>
             </div>
@@ -168,6 +175,48 @@ export default function Referral() {
               "There is no limit to how many friends you can refer. Top referrers can earn massive passive hashpower without spending a single SOL."
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* FAQ Section */}
+      <div className="mt-12 space-y-6">
+        <h3 className="text-xl font-bold mb-6">Frequently Asked Questions</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {faqs.map((faq, i) => (
+            <div 
+              key={i} 
+              className="card p-6 cursor-pointer hover:border-primary/30 transition-all group"
+              onClick={() => setOpenFaq(openFaq === i ? null : i)}
+            >
+              <div className="flex items-center justify-between gap-4">
+                <h4 className="text-sm font-bold uppercase tracking-tight text-white/80 group-hover:text-white transition-colors">
+                  {faq.question}
+                </h4>
+                <motion.div
+                  animate={{ rotate: openFaq === i ? 180 : 0 }}
+                  className="text-muted"
+                >
+                  <ChevronDown size={16} />
+                </motion.div>
+              </div>
+              
+              <AnimatePresence>
+                {openFaq === i && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                    animate={{ height: "auto", opacity: 1, marginTop: 16 }}
+                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <p className="text-xs text-muted leading-relaxed">
+                      {faq.answer}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
         </div>
       </div>
     </div>

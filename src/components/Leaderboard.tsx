@@ -29,9 +29,9 @@ export default function Leaderboard() {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     try {
-      const res = await axios.get('/api/status', { timeout: 10000 });
+      const res = await axios.get('/api/leaderboard', { timeout: 10000 });
       // Sort by totalEarned descending
-      const sortedMiners = (res.data.miners || []).sort((a: Miner, b: Miner) => b.totalEarned - a.totalEarned);
+      const sortedMiners = (res.data || []).sort((a: Miner, b: Miner) => b.totalEarned - a.totalEarned);
       setMiners(sortedMiners);
     } catch (err) {
       console.error('Failed to fetch leaderboard:', err);

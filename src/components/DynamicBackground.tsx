@@ -115,7 +115,7 @@ const DynamicBackground: React.FC = () => {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-[-1] opacity-40"
+      className="fixed inset-0 pointer-events-none z-[-1] opacity-60"
       style={{ mixBlendMode: 'screen' }}
     />
   );

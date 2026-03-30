@@ -11,6 +11,7 @@ import { cn } from './lib/utils';
 import Dashboard from './components/Dashboard';
 import MyAssets from './components/MyAssets';
 import MiningHistory from './components/MiningHistory';
+import PurchaseHistory from './components/PurchaseHistory';
 import AdminDashboard from './components/AdminDashboard';
 import Leaderboard from './components/Leaderboard';
 import Referral from './components/Referral';
@@ -19,7 +20,7 @@ import DynamicBackground from './components/DynamicBackground';
 // Default styles that can be overridden by your app
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-type Page = 'dashboard' | 'assets' | 'history' | 'admin' | 'leaderboard' | 'referral';
+type Page = 'dashboard' | 'assets' | 'history' | 'purchase-history' | 'admin' | 'leaderboard' | 'referral';
 
 class ErrorBoundary extends React.Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   state = { hasError: false, error: null as Error | null };
@@ -84,6 +85,7 @@ function MainContent() {
       case 'dashboard': return <Dashboard />;
       case 'assets': return <MyAssets />;
       case 'history': return <MiningHistory />;
+      case 'purchase-history': return <PurchaseHistory />;
       case 'admin': return isAdmin ? <AdminDashboard /> : <Dashboard />;
       case 'leaderboard': return <Leaderboard />;
       case 'referral': return <Referral />;
@@ -147,7 +149,14 @@ function MainContent() {
             className={cn("nav-item", currentPage === 'history' && "active")}
           >
             <History />
-            <span>History</span>
+            <span>Mining History</span>
+          </button>
+          <button 
+            onClick={() => setCurrentPage('purchase-history')}
+            className={cn("nav-item", currentPage === 'purchase-history' && "active")}
+          >
+            <History />
+            <span>Purchase History</span>
           </button>
         </nav>
 
@@ -208,7 +217,8 @@ function MainContent() {
               <button onClick={() => setCurrentPage('leaderboard')} className="hover:text-primary transition-colors">Leaderboard</button>
               <button onClick={() => setCurrentPage('referral')} className="hover:text-primary transition-colors">Referral</button>
               <button onClick={() => setCurrentPage('assets')} className="hover:text-primary transition-colors">Assets</button>
-              <button onClick={() => setCurrentPage('history')} className="hover:text-primary transition-colors">History</button>
+              <button onClick={() => setCurrentPage('history')} className="hover:text-primary transition-colors">Mining History</button>
+              <button onClick={() => setCurrentPage('purchase-history')} className="hover:text-primary transition-colors">Purchase History</button>
               {isAdmin && (
                 <button onClick={() => setCurrentPage('admin')} className={cn("hover:text-primary transition-colors flex items-center gap-1.5", currentPage === 'admin' && "text-primary")}>
                   <Shield size={10} />
@@ -255,7 +265,14 @@ function MainContent() {
           className={cn("nav-item", currentPage === 'history' && "active")}
         >
           <History />
-          <span>History</span>
+          <span>Mining</span>
+        </button>
+        <button 
+          onClick={() => setCurrentPage('purchase-history')}
+          className={cn("nav-item", currentPage === 'purchase-history' && "active")}
+        >
+          <History />
+          <span>Purchases</span>
         </button>
         {isAdmin && (
           <button 
