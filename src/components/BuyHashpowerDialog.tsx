@@ -155,13 +155,22 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
       }, 'confirmed');
       
       // Verify with backend
-      const response = await axios.post('/api/buy-hashpower', {
-        wallet: publicKey.toBase58(),
-        signature: finalSignature,
-        solAmount: tier.sol
-      });
+      let response;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await axios.post('/api/buy-hashpower', {
+            wallet: publicKey.toBase58(),
+            signature: finalSignature,
+            solAmount: tier.sol
+          });
+          if (response.data.message === "Hashpower added") break;
+        } catch (err) {
+          if (attempt === 2) throw err;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
 
-      if (response.data.message === "Hashpower added") {
+      if (response && response.data.message === "Hashpower added") {
         setStatus('success');
         setTimeout(() => {
           onPurchaseSuccess();

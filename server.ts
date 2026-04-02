@@ -7,7 +7,7 @@ import fs from "fs";
 import axios from "axios";
 import crypto from "crypto";
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, where, runTransaction } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, addDoc, updateDoc, deleteDoc, where, runTransaction, writeBatch } from 'firebase/firestore';
 
 import { 
   BLOCK_INTERVAL, 
@@ -141,6 +141,7 @@ let state = {
   usedSignatures: new Set<string>(), // prevent replay
   history: [] as any[], // store block history
   genesisBlock: 0,
+  paused: false,
 };
 
 let lastSyncTime = 0;
@@ -194,9 +195,12 @@ async function syncState() {
           
           // Always sync global state to stay in sync with other serverless instances
           const dbCurrentBlock = Number(data.currentBlock) || 0;
+          state.paused = !!data.paused;
           
-          // If Firestore block is higher, or if a factory reset happened (db block is 0)
-          if (dbCurrentBlock > state.currentBlock || dbCurrentBlock === 0) {
+          // If Firestore block is higher
+          console.log(`[DEBUG] syncState: dbCurrentBlock=${dbCurrentBlock}, state.currentBlock=${state.currentBlock}`);
+          if (dbCurrentBlock > state.currentBlock) {
+            console.log(`[DEBUG] syncState: Updating local state from Firestore`);
             state.currentBlock = dbCurrentBlock;
             state.lastBlockTimestamp = Number(data.lastBlockTimestamp) || GENESIS_TIMESTAMP;
             state.totalDistributed = Number(data.totalDistributed) || 0;
@@ -342,6 +346,10 @@ function getBlockReward(blockNumber: number) {
 // REWARD DISTRIBUTION
 // ==========================================
 async function processBlock(): Promise<boolean> {
+  if (state.paused) {
+    console.log("Mining is paused.");
+    return false;
+  }
   if (state.currentBlock === undefined || isNaN(state.currentBlock)) state.currentBlock = 0;
   
   const blockToMine = state.currentBlock;
@@ -388,7 +396,8 @@ async function processBlock(): Promise<boolean> {
   state.currentBlock = blockToMine + 1;
   state.lastBlockTimestamp = blockTimestamp;
 
-  const totalHashpower = state.users.reduce((sum, u) => sum + (u.hashpower || 0), 0);
+  const activeUsers = state.users.filter(u => u.hashpower > 0);
+  const totalHashpower = activeUsers.reduce((sum, u) => sum + (u.hashpower || 0), 0);
   const blockReward = totalHashpower > 0 ? getBlockReward(blockToMine) : 0;
 
   const blockHash = crypto.createHash('sha256').update(`${blockToMine}-${blockTimestamp}-${totalHashpower}`).digest('hex');
@@ -398,55 +407,70 @@ async function processBlock(): Promise<boolean> {
     timestamp: blockTimestamp,
     reward: blockReward,
     totalHashpower: totalHashpower,
-    activeMiners: state.users.filter(u => u.hashpower > 0).length,
+    activeMiners: activeUsers.length,
     hash: blockHash,
     status: totalHashpower === 0 ? "DEFERRED" : "CONFIRMED"
   };
 
-  console.log(`⛏ Block #${blockToMine} | Reward: ${blockReward.toFixed(4)} | Hashpower: ${totalHashpower}`);
+  console.log(`⛏ Block #${blockToMine} | Reward: ${blockReward.toFixed(4)} | Hashpower: ${totalHashpower} | Miners: ${activeUsers.length}`);
 
   // Update only users with active hashpower
-  const activeUsers = state.users.filter(u => u.hashpower > 0);
-  
   if (totalHashpower > 0) {
-    for (const user of activeUsers) {
-      const reward = Math.floor((user.hashpower / totalHashpower) * blockReward);
-      user.totalEarned += reward;
-      state.totalDistributed += reward;
+    console.log(`[EXNUS ENGINE] Distributing rewards to ${activeUsers.length} active miners...`);
+    
+    // Process in chunks of 100 to avoid hitting Firestore batch limits (max 500 ops per batch)
+    const chunkSize = 100;
+    for (let i = 0; i < activeUsers.length; i += chunkSize) {
+      const chunk = activeUsers.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      
+      for (const user of chunk) {
+        const reward = Math.floor((user.hashpower / totalHashpower) * blockReward);
+        user.totalEarned += reward;
+        state.totalDistributed += reward;
 
-      const rewardHash = crypto.createHash('sha256').update(`${blockToMine}-${blockTimestamp}-${user.wallet}-${reward}`).digest('hex');
-      const record = {
-        blockNumber: blockToMine,
-        reward: Math.floor(reward),
-        timestamp: blockTimestamp,
-        hashpower: user.hashpower,
-        hash: blockHash,
-        rewardHash: rewardHash
-      };
+        const rewardHash = crypto.createHash('sha256').update(`${blockToMine}-${blockTimestamp}-${user.wallet}-${reward}`).digest('hex');
+        const record = {
+          blockNumber: blockToMine,
+          reward: Math.floor(reward),
+          timestamp: blockTimestamp,
+          hashpower: user.hashpower,
+          hash: blockHash,
+          rewardHash: rewardHash
+        };
 
-      if (!user.history) user.history = [];
-      user.history.unshift(record);
-      if (user.history.length > 20) user.history.pop();
+        if (!user.history) user.history = [];
+        user.history.unshift(record);
+        if (user.history.length > 20) user.history.pop();
 
-      // Persist user update and history record
+        // 1. Update user document
+        batch.set(doc(db, 'users', user.wallet), pack(user, ['wallet', 'hashpower', 'totalEarned']));
+        
+        // 2. Add to user's personal history subcollection
+        batch.set(doc(db, 'users', user.wallet, 'history', `${blockToMine}-${blockTimestamp}`), pack(record, ['blockNumber', 'timestamp', 'reward']));
+        
+        // 3. Add to global block rewards subcollection (for transparency)
+        // CRITICAL: Must include 'reward' in plainFields for orderBy to work in Firestore
+        batch.set(doc(db, 'history', `${blockToMine}-${blockTimestamp}`, 'rewards', user.wallet), pack({
+          wallet: user.wallet,
+          reward: Math.floor(reward),
+          hashpower: user.hashpower,
+          timestamp: blockTimestamp,
+          blockNumber: blockToMine,
+          status: "CONFIRMED",
+          rewardHash: rewardHash
+        }, ['wallet', 'blockNumber', 'timestamp', 'reward', 'hashpower', 'status', 'rewardHash']));
+      }
+      
       try {
-        await Promise.all([
-          setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet'])),
-          setDoc(doc(db, 'users', user.wallet, 'history', `${blockToMine}-${blockTimestamp}`), pack(record, ['blockNumber', 'timestamp'])),
-          setDoc(doc(db, 'history', `${blockToMine}-${blockTimestamp}`, 'rewards', user.wallet), pack({
-            wallet: user.wallet,
-            reward: Math.floor(reward),
-            hashpower: user.hashpower,
-            timestamp: blockTimestamp,
-            blockNumber: blockToMine,
-            status: "CONFIRMED",
-            rewardHash: rewardHash
-          }, ['wallet', 'blockNumber', 'timestamp']))
-        ]);
+        await batch.commit();
+        console.log(`[EXNUS ENGINE] Batch ${Math.floor(i/chunkSize) + 1} committed successfully (${chunk.length} users).`);
       } catch (err) {
-        console.error(`❌ Firestore Error (user ${user.wallet}):`, err);
+        console.error(`[EXNUS ENGINE] ❌ Batch ${Math.floor(i/chunkSize) + 1} failed:`, err);
       }
     }
+  } else {
+    console.log("[EXNUS ENGINE] No active miners to distribute rewards to.");
   }
 
   // Update global history
@@ -456,14 +480,14 @@ async function processBlock(): Promise<boolean> {
   // Persist global history and status (update totalDistributed)
   try {
     await Promise.all([
-      setDoc(doc(db, 'history', `${blockData.blockNumber}-${blockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp'])),
+      setDoc(doc(db, 'history', `${blockData.blockNumber}-${blockTimestamp}`), pack(blockData, ['blockNumber', 'timestamp', 'reward', 'totalHashpower', 'activeMiners', 'status', 'hash'])),
       setDoc(doc(db, 'status', 'global'), pack({
         currentBlock: state.currentBlock,
         lastBlockTimestamp: blockTimestamp,
         totalDistributed: state.totalDistributed,
         genesisTimestamp: GENESIS_TIMESTAMP,
         genesisBlock: state.genesisBlock
-      }))
+      }, ['currentBlock', 'lastBlockTimestamp']))
     ]);
   } catch (err) {
     console.error("❌ Firestore Error (global):", err);
@@ -477,7 +501,7 @@ async function processBlock(): Promise<boolean> {
 // ==========================================
 let isChecking = false;
 async function checkBlocks() {
-  if (!initialSyncDone || isChecking) return;
+  if (!initialSyncDone || isChecking || state.paused) return; // Added state.paused check
   isChecking = true;
   try {
     const currentTime = now();
@@ -492,6 +516,10 @@ async function checkBlocks() {
     if (currentTime >= (state.lastBlockTimestamp || GENESIS_TIMESTAMP) + BLOCK_INTERVAL && state.currentBlock < TOTAL_BLOCKS) {
       const nextBlockDueAt = (state.lastBlockTimestamp || GENESIS_TIMESTAMP) + BLOCK_INTERVAL;
       console.log(`[EXNUS ENGINE] Mining block #${state.currentBlock}: due=${nextBlockDueAt}, now=${currentTime}`);
+      
+      // CRITICAL: Sync state immediately before mining to ensure we have the latest active miners
+      await syncState();
+      
       await processBlock();
     }
   } catch (err) {
@@ -505,11 +533,10 @@ async function checkBlocks() {
 // VERIFY SOL PAYMENT
 // ==========================================
 const fallbackRPCs = [
-  "https://solana-mainnet.rpc.extrnode.com",
-  "https://rpc.ankr.com/solana",
   "https://api.mainnet-beta.solana.com",
-  "https://solana.publicnode.com",
-  "https://mainnet.helius-rpc.com/?api-key=49911993-9080-4966-993c-238435843234"
+  "https://solana-api.syndica.io/public-rpc",
+  "https://rpc.ankr.com/solana",
+  "https://api.metaplex.solana.com"
 ];
 
 import bs58 from 'bs58';
@@ -529,41 +556,45 @@ async function verifySolPayment(signature: string, amount: number, wallet: strin
 
   const connections = [connection, ...fallbackRPCs.map(rpc => new Connection(rpc))];
 
-  for (const conn of connections) {
-    try {
-      const tx = await conn.getParsedTransaction(finalSignature, {
-        maxSupportedTransactionVersion: 0,
-        commitment: 'confirmed'
-      });
+  // Retry logic
+  for (let attempt = 0; attempt < 3; attempt++) {
+    for (const conn of connections) {
+      try {
+        const tx = await conn.getParsedTransaction(finalSignature, {
+          maxSupportedTransactionVersion: 0,
+          commitment: 'confirmed'
+        });
 
-      if (!tx) continue;
+        if (!tx) continue;
 
-      const instructions = tx.transaction.message.instructions;
+        const instructions = tx.transaction.message.instructions;
 
-      for (let ix of instructions) {
-        if ('program' in ix && ix.program === "system") {
-          const info = (ix as any).parsed.info;
+        for (let ix of instructions) {
+          if ('program' in ix && ix.program === "system") {
+            const info = (ix as any).parsed.info;
 
-          // Use rounded lamports for comparison
-          const expectedLamports = Math.round(amount * 1e9);
-          
-          if (
-            info.destination === TREASURY_WALLET &&
-            info.source === wallet &&
-            Math.abs(info.lamports - expectedLamports) < 100 // Allow tiny rounding difference
-          ) {
-            state.usedSignatures.add(finalSignature);
-            return true;
+            // Use rounded lamports for comparison
+            const expectedLamports = Math.round(amount * 1e9);
+            
+            if (
+              info.destination === TREASURY_WALLET &&
+              info.source === wallet &&
+              Math.abs(info.lamports - expectedLamports) < 100 // Allow tiny rounding difference
+            ) {
+              state.usedSignatures.add(finalSignature);
+              return true;
+            }
           }
         }
+        
+        // If we found the transaction but it didn't match our criteria, we don't need to check other RPCs
+        return false;
+      } catch (e) {
+        console.log(`Verification error with RPC: ${conn.rpcEndpoint}`, e);
+        // Try next RPC
       }
-      
-      // If we found the transaction but it didn't match our criteria, we don't need to check other RPCs
-      return false;
-    } catch (e) {
-      console.log(`Verification error with RPC: ${conn.rpcEndpoint}`, e);
-      // Try next RPC
     }
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait before retrying
   }
 
   return false;
@@ -631,6 +662,7 @@ app.get("/api/status", async (req, res) => {
     totalHashpower,
     activeMiners,
     totalUsers,
+    paused: state.paused,
     miners: adminWallet === ADMIN_WALLET ? state.users : [],
   });
 });
@@ -638,12 +670,14 @@ app.get("/api/status", async (req, res) => {
 // Get Block Rewards
 app.get("/api/history/:blockId/rewards", async (req, res) => {
   const { blockId } = req.params;
+  console.log(`DEBUG: Fetching rewards for blockId: ${blockId}`);
   try {
     const rewardsSnap = await getDocs(query(collection(db, 'history', blockId, 'rewards'), orderBy('reward', 'desc')));
     const rewards = rewardsSnap.docs.map(d => unpack(d.data()));
+    console.log(`DEBUG: Found ${rewards.length} rewards for blockId: ${blockId}`);
     res.json(rewards);
   } catch (err) {
-    console.error(err);
+    console.error(`❌ Failed to fetch rewards for ${blockId}:`, err);
     res.status(500).json({ error: "Failed to fetch rewards" });
   }
 });
@@ -862,6 +896,20 @@ app.post("/api/admin/clear-history", async (req, res) => {
     console.error("❌ Failed to clear history:", err);
     res.status(500).json({ error: "Failed to clear history" });
   }
+});
+
+// Toggle Pause/Resume
+app.post("/api/admin/toggle-pause", async (req, res) => {
+  const { adminWallet, paused } = req.body;
+  if (adminWallet !== ADMIN_WALLET) return res.status(403).json({ error: "Unauthorized" });
+
+  state.paused = !!paused;
+  await setDoc(doc(db, 'status', 'global'), pack({
+    ...unpack((await getDoc(doc(db, 'status', 'global'))).data()!),
+    paused: state.paused
+  }), { merge: true });
+
+  res.json({ success: true, paused: state.paused });
 });
 
 // Factory Reset

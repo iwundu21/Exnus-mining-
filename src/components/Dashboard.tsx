@@ -21,6 +21,7 @@ interface Status {
   totalHashpower: number;
   activeMiners: number;
   totalUsers: number;
+  paused?: boolean;
 }
 
 const AnimatedNumber = ({ value, className }: { value: number, className?: string }) => (
@@ -253,6 +254,11 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           className="data-card"
         >
+          {status?.paused && (
+            <div className="absolute top-4 right-4 px-2 py-1 bg-yellow-500/20 text-yellow-500 rounded-full text-[10px] font-bold uppercase tracking-widest">
+              Paused
+            </div>
+          )}
           <div className="data-value">
             #<AnimatedNumber value={status?.currentBlock || 0} />
           </div>

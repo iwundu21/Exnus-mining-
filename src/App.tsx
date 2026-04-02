@@ -4,7 +4,7 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
-import { LayoutDashboard, Wallet, History, Cpu, Shield, Trophy, Users } from 'lucide-react';
+import { LayoutDashboard, Wallet, History, Cpu, Shield, Trophy, Users, Gift } from 'lucide-react';
 import { cn } from './lib/utils';
 
 // Pages
@@ -15,12 +15,13 @@ import PurchaseHistory from './components/PurchaseHistory';
 import AdminDashboard from './components/AdminDashboard';
 import Leaderboard from './components/Leaderboard';
 import Referral from './components/Referral';
+import Tasks from './components/Tasks';
 import DynamicBackground from './components/DynamicBackground';
 
 // Default styles that can be overridden by your app
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-type Page = 'dashboard' | 'assets' | 'history' | 'purchase-history' | 'admin' | 'leaderboard' | 'referral';
+type Page = 'dashboard' | 'assets' | 'history' | 'purchase-history' | 'admin' | 'leaderboard' | 'referral' | 'tasks';
 
 class ErrorBoundary extends React.Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   state = { hasError: false, error: null as Error | null };
@@ -89,6 +90,7 @@ function MainContent() {
       case 'admin': return isAdmin ? <AdminDashboard /> : <Dashboard />;
       case 'leaderboard': return <Leaderboard />;
       case 'referral': return <Referral />;
+      case 'tasks': return <Tasks />;
       default: return <Dashboard />;
     }
   };
@@ -157,6 +159,13 @@ function MainContent() {
           >
             <History />
             <span>Purchase History</span>
+          </button>
+          <button 
+            onClick={() => setCurrentPage('tasks')}
+            className={cn("nav-item", currentPage === 'tasks' && "active")}
+          >
+            <Gift />
+            <span>Tasks</span>
           </button>
         </nav>
 
@@ -274,6 +283,13 @@ function MainContent() {
         >
           <History />
           <span>Purchases</span>
+        </button>
+        <button 
+          onClick={() => setCurrentPage('tasks')}
+          className={cn("nav-item", currentPage === 'tasks' && "active")}
+        >
+          <Gift />
+          <span>Tasks</span>
         </button>
         {isAdmin && (
           <button 

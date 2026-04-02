@@ -36,6 +36,9 @@ export default function AdminDashboard() {
   const [clearingHistory, setClearingHistory] = useState(false);
   const [clearMessage, setClearMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
+  const [paused, setPaused] = useState(false);
+  const [togglingPause, setTogglingPause] = useState(false);
+
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resettingFactory, setResettingFactory] = useState(false);
   const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -79,6 +82,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleTogglePause = async () => {
+    if (!publicKey) return;
+    setTogglingPause(true);
+    try {
+      const res = await axios.post('/api/admin/toggle-pause', { 
+        adminWallet: publicKey.toString(),
+        paused: !paused 
+      });
+      setPaused(res.data.paused);
+    } catch (err) {
+      console.error('Failed to toggle pause:', err);
+    } finally {
+      setTogglingPause(false);
+    }
+  };
+
   const handleFactoryReset = async () => {
     if (!publicKey) return;
     setResettingFactory(true);
@@ -87,6 +106,7 @@ export default function AdminDashboard() {
       await axios.post('/api/admin/factory-reset', { adminWallet: publicKey.toString() });
       setResetMessage({ type: 'success', text: 'Factory reset completed successfully. Network restarted.' });
       setShowResetConfirm(false);
+      setPaused(false); // Reset pause state
       fetchMiners(); // Refresh list (should be empty)
     } catch (err) {
       console.error('Failed to factory reset:', err);
@@ -376,8 +396,29 @@ export default function AdminDashboard() {
             )}
           </AnimatePresence>
 
+          {/* Mining Control Panel */}
+          <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4">
+            <div className="space-y-2">
+              <h3 className="font-bold text-primary flex items-center gap-2">
+                <Zap size={18} />
+                Mining Control
+              </h3>
+              <p className="text-xs text-muted leading-relaxed">
+                Pause or resume the mining engine.
+              </p>
+            </div>
+
+            <button 
+              onClick={handleTogglePause}
+              disabled={togglingPause}
+              className={`w-full py-3 rounded-xl font-bold text-xs tracking-widest uppercase transition-all border ${paused ? 'bg-green-500/10 text-green-500 border-green-500/30 hover:bg-green-500/20' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20'} disabled:opacity-50 flex items-center justify-center gap-2`}
+            >
+              {togglingPause ? <Loader2 className="animate-spin" size={14} /> : (paused ? 'Resume Mining' : 'Pause Mining')}
+            </button>
+          </div>
+
           {/* Genesis Timestamp Panel */}
-          <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4 mt-8">
+          <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4">
             <div className="space-y-2">
               <h3 className="font-bold text-primary flex items-center gap-2">
                 <Zap size={18} />

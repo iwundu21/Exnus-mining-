@@ -71,11 +71,12 @@ function BlockDetailsDialog({ block, onClose }: { block: any, onClose: () => voi
         <div className="flex-1 overflow-y-auto p-6">
           <div className="overflow-x-auto pb-2">
             <div className="min-w-[700px]">
-              <div className="grid grid-cols-6 gap-4 p-4 text-[10px] uppercase tracking-widest font-bold text-muted border-b border-white/5 bg-white/[0.02]">
+              <div className="grid grid-cols-7 gap-4 p-4 text-[10px] uppercase tracking-widest font-bold text-muted border-b border-white/5 bg-white/[0.02]">
                 <div className="col-span-1">Wallet Address</div>
                 <div className="col-span-2">Reward Hash ID</div>
                 <div className="col-span-1">Amount</div>
                 <div className="col-span-1">Hashpower</div>
+                <div className="col-span-1">Share %</div>
                 <div className="col-span-1 text-right">Status</div>
               </div>
 
@@ -90,7 +91,7 @@ function BlockDetailsDialog({ block, onClose }: { block: any, onClose: () => voi
                   </div>
                 ) : (
                   rewards.map((reward: any, i) => (
-                    <div key={i} className="grid grid-cols-6 gap-4 p-4 items-center text-sm font-mono hover:bg-white/[0.01] transition-colors">
+                    <div key={i} className="grid grid-cols-7 gap-4 p-4 items-center text-sm font-mono hover:bg-white/[0.01] transition-colors">
                       <div className="col-span-1 flex items-center gap-2">
                         <User size={12} className="text-muted shrink-0" />
                         <span className="text-primary font-bold truncate">{formatWallet(reward.wallet)}</span>
@@ -112,6 +113,9 @@ function BlockDetailsDialog({ block, onClose }: { block: any, onClose: () => voi
                       </div>
                       <div className="col-span-1 text-muted text-xs whitespace-nowrap">
                         {formatNumber(reward.hashpower)} <span className="text-[10px]">TH/s</span>
+                      </div>
+                      <div className="col-span-1 text-xs text-primary font-bold">
+                        {block.totalHashpower > 0 ? ((reward.hashpower / block.totalHashpower) * 100).toFixed(2) : '0.00'}%
                       </div>
                       <div className="col-span-1 text-right">
                         <span className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[9px] font-bold uppercase tracking-widest rounded border border-green-500/20 whitespace-nowrap">
@@ -197,12 +201,13 @@ export default function MiningHistory() {
 
       <section className="overflow-x-auto pb-4">
         <div className="min-w-[800px]">
-          <div className="grid grid-cols-7 gap-4 p-6 data-label bg-white/[0.02] border-b border-white/5">
+          <div className="grid grid-cols-8 gap-4 p-6 data-label bg-white/[0.02] border-b border-white/5">
             <div className="col-span-1">Block</div>
             <div className="col-span-2">Reward Hash ID</div>
             <div className="col-span-1">Timestamp</div>
             <div className="col-span-1">Reward</div>
             <div className="col-span-1">Network HP</div>
+            <div className="col-span-1">Miners</div>
             <div className="col-span-1 text-right">Status</div>
           </div>
 
@@ -220,7 +225,7 @@ export default function MiningHistory() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.03 }}
                   onClick={() => setSelectedBlock(block)}
-                  className="grid grid-cols-7 gap-4 p-6 items-center hover:bg-white/[0.05] transition-colors group cursor-pointer border border-transparent hover:border-primary/20 rounded-xl"
+                  className="grid grid-cols-8 gap-4 p-6 items-center hover:bg-white/[0.05] transition-colors group cursor-pointer border border-transparent hover:border-primary/20 rounded-xl"
                 >
                   <div className="col-span-1 flex items-center gap-3">
                     <Hash size={14} className="text-muted group-hover:text-primary transition-colors" />
@@ -250,6 +255,10 @@ export default function MiningHistory() {
 
                   <div className="col-span-1 font-mono text-sm">
                     {formatNumber(block.totalHashpower)} <span className="text-[10px] text-muted">TH/s</span>
+                  </div>
+
+                  <div className="col-span-1 font-mono text-sm text-primary">
+                    {block.activeMiners || 0} <span className="text-[10px] text-muted">Miners</span>
                   </div>
 
                   <div className="col-span-1 text-right">
