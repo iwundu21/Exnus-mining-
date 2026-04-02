@@ -14,6 +14,7 @@ interface Status {
   currentBlock: number;
   totalBlocks: number;
   countdown: number;
+  nextBlockDueAt?: number;
   blockReward: number;
   totalDistributed: number;
   remainingSupply: number;
@@ -23,14 +24,9 @@ interface Status {
 }
 
 const AnimatedNumber = ({ value, className }: { value: number, className?: string }) => (
-  <motion.span
-    key={value}
-    initial={{ opacity: 0.7, color: 'var(--primary)' }}
-    animate={{ opacity: 1, color: 'var(--color-text)' }}
-    className={className}
-  >
+  <span className={className}>
     {formatNumber(value)}
-  </motion.span>
+  </span>
 );
 
 const TrendIndicator = ({ trend }: { trend: number }) => (
@@ -44,13 +40,22 @@ const TrendIndicator = ({ trend }: { trend: number }) => (
 
 export default function Dashboard() {
   const { publicKey } = useWallet();
-  const [status, setStatus] = useState<Status | null>(null);
+  const [status, setStatus] = useState<Status | null>(() => {
+    const saved = localStorage.getItem('exnus_status');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [user, setUser] = useState<any>(null);
   const [solBalance, setSolBalance] = useState<number>(0);
   const [history, setHistory] = useState<any[]>([]);
   const [difficulty, setDifficulty] = useState<string>('84.2P');
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+
+  useEffect(() => {
+    if (status) {
+      localStorage.setItem('exnus_status', JSON.stringify(status));
+    }
+  }, [status]);
 
   useEffect(() => {
     const hasSeenOnboarding = localStorage.getItem('exnus_onboarding_seen');
@@ -84,17 +89,20 @@ export default function Dashboard() {
         axios.get('/api/history', { timeout: 15000 })
       ]);
       
-      setStatus(prev => {
-        if (!prev) return statusRes.data;
-        const newStatus = { ...statusRes.data };
-        if (Math.abs(prev.countdown - newStatus.countdown) <= 2) {
-          newStatus.countdown = prev.countdown;
-        }
-        return newStatus;
-      });
+      const newStatus = statusRes.data;
+      
+      // Only update if the difference is significant (e.g., > 2 seconds)
+      if (Math.abs((newStatus.countdown) - (status?.countdown || 0)) > 2) {
+        newStatus.countdown = Math.max(0, newStatus.countdown);
+        setStatus(newStatus);
+      } else {
+        // Keep the existing countdown to avoid jumps
+        setStatus(prev => ({ ...newStatus, countdown: prev?.countdown || newStatus.countdown }));
+      }
       setUser(userRes.data);
       if (Array.isArray(historyRes.data)) {
-        setHistory(historyRes.data.slice(0, 10).reverse());
+        const uniqueHistory = historyRes.data.filter((v, i, a) => a.findIndex(v2 => (v2.blockNumber === v.blockNumber)) === i);
+        setHistory(uniqueHistory.slice(0, 10).reverse());
       }
 
       if (diffRes && diffRes.data) {
@@ -114,8 +122,18 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    const interval = setInterval(() => {
+      setStatus(prev => {
+        if (!prev || prev.countdown <= 0) return prev;
+        return { ...prev, countdown: prev.countdown - 1 };
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 1000);
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, [publicKey]);
 
@@ -164,6 +182,11 @@ export default function Dashboard() {
     const timer = setInterval(() => {
       setStatus(prev => {
         if (!prev) return prev;
+        if (prev.nextBlockDueAt) {
+          const now = Math.floor(Date.now() / 1000);
+          const remaining = Math.max(0, prev.nextBlockDueAt - now);
+          return { ...prev, countdown: remaining };
+        }
         return { ...prev, countdown: Math.max(0, prev.countdown - 1) };
       });
     }, 1000);
@@ -196,7 +219,7 @@ export default function Dashboard() {
   const chartData = history.map(block => ({
     block: `#${block.blockNumber}`,
     reward: block.reward,
-    share: status?.totalHashpower ? (block.reward / status.totalHashpower) * 100 : 0
+    efficiency: block.totalHashpower ? (block.reward / block.totalHashpower) : 0
   }));
 
   return (
@@ -285,12 +308,11 @@ export default function Dashboard() {
           transition={{ delay: 0.2 }}
           className="data-card"
         >
-          <div className="flex items-center justify-between data-label">
+          <div className="data-label">
             <div className="flex items-center gap-2">
               <Cpu size={14} />
               <span>Total Hashrate</span>
             </div>
-            <TrendIndicator trend={1.25} />
           </div>
           <div className="data-value">
             <AnimatedNumber value={status?.totalHashpower || 0} /> <span className="text-xs text-muted">TH/s</span>
@@ -304,12 +326,11 @@ export default function Dashboard() {
           transition={{ delay: 0.3 }}
           className="data-card"
         >
-          <div className="flex items-center justify-between data-label">
+          <div className="data-label">
             <div className="flex items-center gap-2">
               <Users size={14} />
               <span>Active Miners</span>
             </div>
-            <TrendIndicator trend={-0.45} />
           </div>
           <div className="data-value">
             <AnimatedNumber value={status?.activeMiners || 0} /> <span className="text-xs text-muted">/ {formatNumber(status?.totalUsers || 0)}</span>
@@ -460,7 +481,6 @@ export default function Dashboard() {
                     <span className="text-sm font-mono font-bold">
                       {status?.totalHashpower ? ((user.hashpower / status.totalHashpower) * 100).toFixed(4) : 0}%
                     </span>
-                    <TrendIndicator trend={0.12} />
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
@@ -469,7 +489,7 @@ export default function Dashboard() {
                     <span className="text-sm font-mono font-bold text-primary">
                       ~<AnimatedNumber value={
                         (user.hashpower && status?.totalHashpower && status?.blockReward)
-                          ? (user.hashpower / status.totalHashpower) * status.blockReward * (24 * 60 * 60 / 1200)
+                          ? (user.hashpower / status.totalHashpower) * status.blockReward * (24 * 60 * 60 / BLOCK_INTERVAL)
                           : 0
                       } />
                     </span>

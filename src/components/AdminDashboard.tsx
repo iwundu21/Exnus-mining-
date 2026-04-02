@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, User, Zap, Search, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { formatNumber, cn } from '../lib/utils';
 import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
@@ -170,7 +171,7 @@ export default function AdminDashboard() {
           <div className="text-right">
             <p className="text-[10px] text-muted uppercase tracking-widest font-bold">Network Power</p>
             <p className="text-xl font-mono font-bold text-primary">
-              {(miners.reduce((sum, m) => sum + (m.hashpower || 0), 0)).toLocaleString()} <span className="text-[10px]">TH/s</span>
+              {formatNumber(miners.reduce((sum, m) => sum + (m.hashpower || 0), 0))} <span className="text-[10px]">TH/s</span>
             </p>
           </div>
         </div>
@@ -247,19 +248,19 @@ export default function AdminDashboard() {
                           <div className="flex items-center gap-2">
                             {miner.countryCode && miner.countryCode !== 'UN' ? (
                               <img 
-                                src={`https://flagcdn.com/w20/${miner.countryCode.toLowerCase()}.png`} 
+                                src={`https://flagcdn.com/w40/${miner.countryCode.toLowerCase()}.png`} 
                                 alt={miner.country}
-                                className="w-5 h-auto rounded-sm"
+                                className="w-6 h-auto rounded-sm shadow-sm"
                                 referrerPolicy="no-referrer"
                               />
                             ) : (
-                              <div className="w-5 h-3.5 bg-white/10 rounded-sm"></div>
+                              <div className="w-6 h-4 bg-white/10 rounded-sm"></div>
                             )}
-                            <span className="text-xs text-muted">{miner.country || 'Unknown'}</span>
+                            <span className="text-xs text-muted font-medium">{miner.country || 'Unknown'}</span>
                           </div>
                         </td>
                         <td className="p-4">
-                          <span className="text-sm font-mono font-bold text-primary">{(miner.hashpower || 0).toLocaleString()}</span>
+                          <span className="text-sm font-mono font-bold text-primary">{formatNumber(miner.hashpower || 0)}</span>
                           <span className="text-[10px] text-muted ml-1">TH/s</span>
                         </td>
                         <td className="p-4">
@@ -276,7 +277,7 @@ export default function AdminDashboard() {
                         </td>
                         <td className="p-4">
                           <div className="flex items-center gap-1">
-                            <span className="text-sm font-mono font-bold text-green-500">{(miner.totalEarned || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                            <span className="text-sm font-mono font-bold text-green-500">{formatNumber(miner.totalEarned || 0)}</span>
                             <img 
                               src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
                               alt="EXN" 

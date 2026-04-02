@@ -12,6 +12,6 @@ export function formatAddress(address: string) {
 
 export function formatNumber(num: number) {
   return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 4,
+    maximumFractionDigits: 6,
   }).format(num);
 }

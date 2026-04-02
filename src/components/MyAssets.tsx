@@ -92,7 +92,7 @@ export default function MyAssets() {
 
   // Helper to determine font size based on length
   const getFontSizeClass = (value: number) => {
-    const str = (value || 0).toLocaleString(undefined, { maximumFractionDigits: 9 });
+    const str = formatNumber(value || 0);
     if (str.length > 20) return "text-sm";
     if (str.length > 15) return "text-lg";
     if (str.length > 10) return "text-2xl";
@@ -131,7 +131,7 @@ export default function MyAssets() {
           <p className="data-label text-primary text-xs md:text-sm">Balance</p>
           <div className="flex items-baseline gap-2 overflow-hidden">
             <span className={`${getFontSizeClass(user?.totalEarned || 0)} font-mono font-bold truncate`}>
-              {user?.totalEarned?.toLocaleString(undefined, { maximumFractionDigits: 9 }) || "0"}
+              {formatNumber(user?.totalEarned || 0)}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <img 
@@ -162,7 +162,7 @@ export default function MyAssets() {
           </div>
           <div className="flex items-baseline gap-2 overflow-hidden">
             <span className={`${getFontSizeClass(balance || 0)} font-mono font-bold truncate`}>
-              {(balance || 0).toLocaleString(undefined, { maximumFractionDigits: 9 })}
+              {formatNumber(balance || 0)}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <img 
@@ -185,7 +185,7 @@ export default function MyAssets() {
           <p className="data-label text-xs md:text-sm">Hashpower</p>
           <div className="flex items-baseline gap-2 overflow-hidden">
             <span className={`${getFontSizeClass(user?.hashpower || 0)} font-mono font-bold truncate`}>
-              {user?.hashpower?.toLocaleString(undefined, { maximumFractionDigits: 9 }) || "0"}
+              {formatNumber(user?.hashpower || 0)}
             </span>
             <span className="text-xs md:text-sm text-muted font-bold shrink-0">TH/s</span>
           </div>

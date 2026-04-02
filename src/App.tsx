@@ -212,10 +212,11 @@ function MainContent() {
           
           <footer className="mt-12 pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] text-muted uppercase tracking-widest font-bold">
             <p>© 2026 EXNUS MINING ENGINE. ALL RIGHTS RESERVED.</p>
-            <div className="flex items-center gap-6">
+            <div className="flex flex-wrap justify-center items-center gap-4 md:gap-6">
               <button onClick={() => setCurrentPage('dashboard')} className="hover:text-primary transition-colors">Dashboard</button>
               <button onClick={() => setCurrentPage('leaderboard')} className="hover:text-primary transition-colors">Leaderboard</button>
               <button onClick={() => setCurrentPage('referral')} className="hover:text-primary transition-colors">Referral</button>
+              <button onClick={() => setCurrentPage('tasks')} className="hover:text-primary transition-colors">Tasks</button>
               <button onClick={() => setCurrentPage('assets')} className="hover:text-primary transition-colors">Assets</button>
               <button onClick={() => setCurrentPage('history')} className="hover:text-primary transition-colors">Mining History</button>
               <button onClick={() => setCurrentPage('purchase-history')} className="hover:text-primary transition-colors">Purchase History</button>
