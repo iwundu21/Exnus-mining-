@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { CheckCircle2, Circle, ExternalLink, Gift, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useWallet } from '@solana/wallet-adapter-react';
 
@@ -19,7 +18,7 @@ const TASKS: Task[] = [
     description: 'Follow our official Twitter account for the latest updates.',
     reward: 50,
     link: 'https://twitter.com',
-    icon: <ExternalLink size={18} />
+    icon: null
   },
   {
     id: 'telegram_join',
@@ -27,7 +26,7 @@ const TASKS: Task[] = [
     description: 'Join our community on Telegram to discuss with other miners.',
     reward: 50,
     link: 'https://telegram.org',
-    icon: <ExternalLink size={18} />
+    icon: null
   },
   {
     id: 'discord_join',
@@ -35,7 +34,7 @@ const TASKS: Task[] = [
     description: 'Get support and chat with the team on Discord.',
     reward: 100,
     link: 'https://discord.com',
-    icon: <ExternalLink size={18} />
+    icon: null
   }
 ];
 
@@ -62,7 +61,6 @@ export default function Tasks() {
     <div className="space-y-8 max-w-4xl mx-auto">
       <header>
         <h2 className="text-3xl md:text-5xl font-bold tracking-tight uppercase flex items-center gap-4">
-          <Gift className="text-primary" size={40} />
           Tasks & Rewards
         </h2>
         <p className="text-muted text-sm md:text-base max-w-2xl mt-2">
@@ -73,7 +71,7 @@ export default function Tasks() {
       {!publicKey ? (
         <div className="data-card p-12 text-center space-y-4">
           <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <Gift className="text-primary" size={32} />
+            <span className="text-primary text-2xl font-bold">!</span>
           </div>
           <h3 className="text-xl font-bold">Connect Wallet to View Tasks</h3>
           <p className="text-muted text-sm max-w-md mx-auto">
@@ -97,8 +95,8 @@ export default function Tasks() {
                 }`}
               >
                 <div className="flex items-start gap-4 flex-1">
-                  <div className={`mt-1 shrink-0 ${isCompleted ? 'text-green-500' : 'text-muted'}`}>
-                    {isCompleted ? <CheckCircle2 size={24} /> : <Circle size={24} />}
+                  <div className={`mt-1 shrink-0 font-bold ${isCompleted ? 'text-green-500' : 'text-muted'}`}>
+                    {isCompleted ? "[✓]" : "[ ]"}
                   </div>
                   <div>
                     <h3 className="font-bold text-lg flex items-center gap-2">
@@ -134,14 +132,13 @@ export default function Tasks() {
                   >
                     {isClaiming ? (
                       <>
-                        <Loader2 size={16} className="animate-spin" />
                         Verifying...
                       </>
                     ) : isCompleted ? (
                       'Claimed'
                     ) : (
                       <>
-                        Go <ExternalLink size={14} />
+                        Go
                       </>
                     )}
                   </button>

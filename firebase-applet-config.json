@@ -1,10 +1,10 @@
 {
-  "projectId": "exnus-point",
-  "appId": "1:204029135425:web:5f61ccd928ad88687554c0",
-  "apiKey": "AIzaSyCC9_KJ7rzQSTEcUEDQ8cFKYaHT0ppEPMk",
-  "authDomain": "exnus-point.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-639ea0d8-f541-44d3-a197-6d9e6f56c605",
-  "storageBucket": "exnus-point.firebasestorage.app",
-  "messagingSenderId": "204029135425",
-  "measurementId": ""
+  "projectId": "exnus-mining-6dc0a",
+  "appId": "1:323354432500:web:fb6765e111c3af35d89fa1",
+  "apiKey": "AIzaSyAKn948VTehC4FDZZzXRvDFme3FiNfLPMQ",
+  "authDomain": "exnus-mining-6dc0a.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "exnus-mining-6dc0a.firebasestorage.app",
+  "messagingSenderId": "323354432500",
+  "measurementId": "G-P4MTR6TXNT"
 }

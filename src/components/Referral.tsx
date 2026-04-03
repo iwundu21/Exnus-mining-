@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { Copy, Check, ChevronDown } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -54,6 +53,10 @@ export default function Referral() {
       value: `${((userData?.referralCount || 0) * 0.004).toFixed(3)} TH/s`,
     },
     {
+      label: "Referral Earnings",
+      value: `${(userData?.referralRewards || 0).toFixed(4)} EXN`,
+    },
+    {
       label: "Program Status",
       value: "Active",
     }
@@ -66,7 +69,7 @@ export default function Referral() {
     },
     {
       question: "When are bonuses applied?",
-      answer: "Referral bonuses are applied instantly after your referred friend makes their first hashpower purchase. Both you and your friend will receive a 0.004 TH/s bonus immediately."
+      answer: "Referral bonuses are applied in two ways: 1) You and your friend both receive a 0.004 TH/s hashpower boost instantly after their first purchase. 2) You earn a permanent 10% commission on all mining rewards your referred friends earn."
     },
     {
       question: "Is there a limit to referrals?",
@@ -112,7 +115,6 @@ export default function Referral() {
                     copied ? "bg-green-500 text-white" : "bg-primary text-black hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100"
                   )}
                 >
-                  {copied ? <Check size={16} /> : <Copy size={16} />}
                   {copied ? "Copied" : "Copy Link"}
                 </button>
               </div>
@@ -195,9 +197,9 @@ export default function Referral() {
                 </h4>
                 <motion.div
                   animate={{ rotate: openFaq === i ? 180 : 0 }}
-                  className="text-muted"
+                  className="text-muted text-xs font-bold"
                 >
-                  <ChevronDown size={16} />
+                  {openFaq === i ? "↑" : "↓"}
                 </motion.div>
               </div>
               

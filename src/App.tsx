@@ -4,7 +4,6 @@ import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { PhantomWalletAdapter, SolflareWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { WalletModalProvider, WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { clusterApiUrl } from '@solana/web3.js';
-import { LayoutDashboard, Wallet, History, Cpu, Shield, Trophy, Users, Gift } from 'lucide-react';
 import { cn } from './lib/utils';
 
 // Pages
@@ -122,49 +121,42 @@ function MainContent() {
             onClick={() => setCurrentPage('dashboard')}
             className={cn("nav-item", currentPage === 'dashboard' && "active")}
           >
-            <LayoutDashboard />
             <span>Dashboard</span>
           </button>
           <button 
             onClick={() => setCurrentPage('leaderboard')}
             className={cn("nav-item", currentPage === 'leaderboard' && "active")}
           >
-            <Trophy />
             <span>Leaderboard</span>
           </button>
           <button 
             onClick={() => setCurrentPage('referral')}
             className={cn("nav-item", currentPage === 'referral' && "active")}
           >
-            <Users />
             <span>Referral</span>
           </button>
           <button 
             onClick={() => setCurrentPage('assets')}
             className={cn("nav-item", currentPage === 'assets' && "active")}
           >
-            <Wallet />
             <span>My Assets</span>
           </button>
           <button 
             onClick={() => setCurrentPage('history')}
             className={cn("nav-item", currentPage === 'history' && "active")}
           >
-            <History />
             <span>Mining History</span>
           </button>
           <button 
             onClick={() => setCurrentPage('purchase-history')}
             className={cn("nav-item", currentPage === 'purchase-history' && "active")}
           >
-            <History />
             <span>Purchase History</span>
           </button>
           <button 
             onClick={() => setCurrentPage('tasks')}
             className={cn("nav-item", currentPage === 'tasks' && "active")}
           >
-            <Gift />
             <span>Tasks</span>
           </button>
         </nav>
@@ -185,7 +177,6 @@ function MainContent() {
                   currentPage === 'admin' && "text-primary"
                 )}
               >
-                <Shield size={10} />
                 Admin Dashboard
               </button>
             )}
@@ -231,7 +222,6 @@ function MainContent() {
               <button onClick={() => setCurrentPage('purchase-history')} className="hover:text-primary transition-colors">Purchase History</button>
               {isAdmin && (
                 <button onClick={() => setCurrentPage('admin')} className={cn("hover:text-primary transition-colors flex items-center gap-1.5", currentPage === 'admin' && "text-primary")}>
-                  <Shield size={10} />
                   Admin
                 </button>
               )}
@@ -246,49 +236,42 @@ function MainContent() {
           onClick={() => setCurrentPage('dashboard')}
           className={cn("nav-item", currentPage === 'dashboard' && "active")}
         >
-          <LayoutDashboard />
           <span>Dashboard</span>
         </button>
         <button 
           onClick={() => setCurrentPage('leaderboard')}
           className={cn("nav-item", currentPage === 'leaderboard' && "active")}
         >
-          <Trophy />
           <span>Rank</span>
         </button>
         <button 
           onClick={() => setCurrentPage('referral')}
           className={cn("nav-item", currentPage === 'referral' && "active")}
         >
-          <Users />
           <span>Refer</span>
         </button>
         <button 
           onClick={() => setCurrentPage('assets')}
           className={cn("nav-item", currentPage === 'assets' && "active")}
         >
-          <Wallet />
           <span>Assets</span>
         </button>
         <button 
           onClick={() => setCurrentPage('history')}
           className={cn("nav-item", currentPage === 'history' && "active")}
         >
-          <History />
           <span>Mining</span>
         </button>
         <button 
           onClick={() => setCurrentPage('purchase-history')}
           className={cn("nav-item", currentPage === 'purchase-history' && "active")}
         >
-          <History />
           <span>Purchases</span>
         </button>
         <button 
           onClick={() => setCurrentPage('tasks')}
           className={cn("nav-item", currentPage === 'tasks' && "active")}
         >
-          <Gift />
           <span>Tasks</span>
         </button>
         {isAdmin && (
@@ -296,7 +279,6 @@ function MainContent() {
             onClick={() => setCurrentPage('admin')}
             className={cn("nav-item", currentPage === 'admin' && "active")}
           >
-            <Shield />
             <span>Admin</span>
           </button>
         )}

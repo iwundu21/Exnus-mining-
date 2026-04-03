@@ -3,7 +3,6 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { SystemProgram, Transaction, PublicKey, LAMPORTS_PER_SOL, Connection, VersionedTransaction, TransactionMessage, TransactionInstruction } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Cpu, Zap, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import axios from 'axios';
 
 interface Tier {
@@ -202,11 +201,10 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
         >
           <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/5">
             <div className="flex items-center gap-2">
-              <Zap className="text-primary" size={18} />
               <h3 className="text-lg font-bold tracking-tight uppercase">Buy Mining Hashpower</h3>
             </div>
-            <button onClick={onClose} className="text-muted hover:text-white transition-colors">
-              <X size={20} />
+            <button onClick={onClose} className="text-muted hover:text-white transition-colors text-xs font-bold uppercase">
+              Close
             </button>
           </div>
 
@@ -220,9 +218,6 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
                     className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:border-primary/50 hover:bg-primary/5 transition-all group"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                        <Cpu size={20} className="text-muted group-hover:text-primary" />
-                      </div>
                       <div className="text-left">
                         <p className="text-xs text-muted uppercase font-bold tracking-widest">{tier.label}</p>
                         <p className="text-xl font-mono font-bold">{tier.hp} <span className="text-sm">TH/s</span></p>
@@ -248,7 +243,7 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
 
             {(status === 'preparing' || status === 'sending' || status === 'verifying') && (
               <div className="py-12 text-center space-y-4">
-                <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto" />
+                <div className="text-primary font-bold animate-pulse">...</div>
                 <div className="space-y-1">
                   <h4 className="text-lg font-bold uppercase tracking-tight">
                     {status === 'preparing' ? 'Preparing Transaction' : status === 'sending' ? 'Awaiting Signature' : 'Verifying Transaction'}
@@ -262,7 +257,7 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
 
             {status === 'success' && (
               <div className="py-12 text-center space-y-4">
-                <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
+                <div className="text-green-500 font-bold text-2xl">✓</div>
                 <div className="space-y-1">
                   <h4 className="text-lg font-bold uppercase tracking-tight">Purchase Successful</h4>
                   <p className="text-xs text-muted">Your hashpower has been updated. Happy mining!</p>
@@ -272,7 +267,7 @@ export default function BuyHashpowerDialog({ isOpen, onClose, onPurchaseSuccess 
 
             {status === 'error' && (
               <div className="py-12 text-center space-y-4">
-                <AlertCircle className="w-12 h-12 text-red-500 mx-auto" />
+                <div className="text-red-500 font-bold text-2xl">!</div>
                 <div className="space-y-1">
                   <h4 className="text-lg font-bold uppercase tracking-tight">Transaction Failed</h4>
                   <p className="text-xs text-muted">{error || 'An unknown error occurred.'}</p>

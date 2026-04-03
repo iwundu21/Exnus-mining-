@@ -3,9 +3,10 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { LAMPORTS_PER_SOL } from '@solana/web3.js';
 import axios from 'axios';
 import { motion } from 'motion/react';
-import { Wallet, Zap } from 'lucide-react';
 import { formatNumber } from '../lib/utils';
 import BuyHashpowerDialog from './BuyHashpowerDialog';
+import WithdrawDialog from './WithdrawDialog';
+import CopyButton from './CopyButton';
 
 export default function MyAssets() {
   const { publicKey } = useWallet();
@@ -14,6 +15,7 @@ export default function MyAssets() {
   const [balance, setBalance] = useState<number>(0);
   const [status, setStatus] = useState<any>(null);
   const [isBuyDialogOpen, setIsBuyDialogOpen] = useState(false);
+  const [isWithdrawDialogOpen, setIsWithdrawDialogOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
   const isFetchingRef = useRef(false);
@@ -102,7 +104,6 @@ export default function MyAssets() {
   if (!publicKey) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
-        <Wallet size={48} className="opacity-10" />
         <h2 className="text-xl font-bold">Wallet Disconnected</h2>
         <p className="text-sm opacity-50">Please connect your Solana wallet to view your assets and hashpower.</p>
       </div>
@@ -113,13 +114,26 @@ export default function MyAssets() {
     <div className="space-y-8">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
         <h2 className="text-3xl font-bold tracking-tight uppercase">My Assets</h2>
-        <button 
-          onClick={() => setIsBuyDialogOpen(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-accent transition-colors shadow-lg shadow-primary/20 shrink-0"
-        >
-          <Zap size={14} />
-          Buy Hashpower
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="relative group">
+            <button 
+              disabled={true}
+              className="flex items-center gap-2 px-6 py-3 bg-white/5 text-white/30 border border-white/10 rounded-xl font-bold text-xs tracking-widest uppercase cursor-not-allowed shrink-0"
+            >
+              Withdraw EXN
+              <span className="ml-1 text-[8px] bg-white/10 px-1.5 py-0.5 rounded text-white/50">Coming Soon</span>
+            </button>
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-black/90 border border-white/10 rounded-lg text-[10px] text-white/70 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              Withdrawals will be available once the EXN Smart Contract is deployed.
+            </div>
+          </div>
+          <button 
+            onClick={() => setIsBuyDialogOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-accent transition-colors shadow-lg shadow-primary/20 shrink-0"
+          >
+            Buy Hashpower
+          </button>
+        </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -128,10 +142,10 @@ export default function MyAssets() {
           animate={{ opacity: 1, y: 0 }}
           className="data-card p-6 md:p-8 space-y-2 min-w-0"
         >
-          <p className="data-label text-primary text-xs md:text-sm">Balance</p>
+          <p className="data-label text-primary text-xs md:text-sm">Available Balance</p>
           <div className="flex items-baseline gap-2 overflow-hidden">
-            <span className={`${getFontSizeClass(user?.totalEarned || 0)} font-mono font-bold truncate`}>
-              {formatNumber(user?.totalEarned || 0)}
+            <span className={`${getFontSizeClass((user?.totalEarned || 0) - (user?.withdrawnAmount || 0))} font-mono font-bold truncate`}>
+              {formatNumber((user?.totalEarned || 0) - (user?.withdrawnAmount || 0))}
             </span>
             <div className="flex items-center gap-1 shrink-0">
               <img 
@@ -143,6 +157,7 @@ export default function MyAssets() {
               <span className="text-xs md:text-sm text-muted font-bold">EXN</span>
             </div>
           </div>
+          <p className="text-[10px] text-muted uppercase tracking-widest">Total Earned: {formatNumber(user?.totalEarned || 0)} EXN</p>
         </motion.div>
 
         <motion.div 
@@ -211,8 +226,9 @@ export default function MyAssets() {
                   <tr key={idx} className="border-b border-white/5 hover:bg-white/5 transition-colors">
                     <td className="p-4 font-mono text-sm">#{item.blockNumber}</td>
                     <td className="p-4">
-                      <div className="font-mono text-[9px] text-primary/70 bg-primary/5 px-2 py-1 rounded border border-primary/10 truncate max-w-[150px]">
-                        {item.rewardHash || item.hash || 'PENDING_HASH_GENERATION...'}
+                      <div className="font-mono text-[9px] text-primary/70 bg-primary/5 px-2 py-1 rounded border border-primary/10 flex items-center justify-between gap-2 w-full max-w-[140px]">
+                        <span className="truncate flex-1">{item.rewardHash || item.hash || 'PENDING_HASH_GENERATION...'}</span>
+                        <CopyButton value={item.rewardHash || item.hash || ''} />
                       </div>
                     </td>
                     <td className={`p-4 font-mono text-sm flex items-center gap-1 ${item.reward > 0 ? 'text-primary' : 'text-green-500'}`}>
@@ -268,6 +284,13 @@ export default function MyAssets() {
         isOpen={isBuyDialogOpen} 
         onClose={() => setIsBuyDialogOpen(false)} 
         onPurchaseSuccess={fetchUserData}
+      />
+
+      <WithdrawDialog 
+        isOpen={isWithdrawDialogOpen} 
+        onClose={() => setIsWithdrawDialogOpen(false)} 
+        availableBalance={(user?.totalEarned || 0) - (user?.withdrawnAmount || 0)}
+        onWithdrawSuccess={fetchUserData}
       />
     </div>
   );

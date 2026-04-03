@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Trophy, Medal, User, Zap, TrendingUp, Search, Loader2 } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatNumber, cn } from '../lib/utils';
@@ -20,18 +20,24 @@ const formatWallet = (wallet: string) => {
 };
 
 export default function Leaderboard() {
+  const { publicKey } = useWallet();
   const [miners, setMiners] = useState<Miner[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const isFetchingRef = useRef(false);
+
+  const userWallet = publicKey?.toBase58();
+  const userRank = userWallet ? miners.findIndex(m => m.wallet === userWallet) + 1 : 0;
+  const userMiner = userWallet ? miners.find(m => m.wallet === userWallet) : null;
 
   const fetchMiners = async () => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
     try {
       const res = await axios.get('/api/leaderboard', { timeout: 10000 });
-      // Sort by totalEarned descending
-      const sortedMiners = (res.data || []).sort((a: Miner, b: Miner) => b.totalEarned - a.totalEarned);
+      // Ensure res.data is an array before sorting
+      const data = Array.isArray(res.data) ? res.data : [];
+      const sortedMiners = [...data].sort((a: Miner, b: Miner) => b.totalEarned - a.totalEarned);
       setMiners(sortedMiners);
     } catch (err) {
       console.error('Failed to fetch leaderboard:', err);
@@ -59,7 +65,6 @@ export default function Leaderboard() {
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h2 className="text-3xl md:text-5xl font-bold tracking-tight uppercase flex items-center gap-4">
-            <Trophy className="text-yellow-500" size={40} />
             Leaderboard
           </h2>
           <p className="text-muted text-sm md:text-base max-w-2xl mt-2">
@@ -67,7 +72,6 @@ export default function Leaderboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 rounded-full border border-yellow-500/20">
-          <TrendingUp size={14} className="text-yellow-500" />
           <span className="text-[10px] uppercase font-bold tracking-widest text-yellow-500">Real-time Rankings</span>
         </div>
       </header>
@@ -85,7 +89,7 @@ export default function Leaderboard() {
             >
               <div className="relative inline-block">
                 <div className="w-20 h-20 rounded-full bg-slate-400/20 flex items-center justify-center border-2 border-slate-400/50 mx-auto">
-                  <Medal className="text-slate-400" size={32} />
+                  <span className="text-slate-400 text-2xl font-bold">#2</span>
                 </div>
                 <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-slate-400 text-black font-bold flex items-center justify-center text-sm">2</div>
               </div>
@@ -114,7 +118,7 @@ export default function Leaderboard() {
             >
               <div className="relative inline-block">
                 <div className="w-24 h-24 rounded-full bg-yellow-500/20 flex items-center justify-center border-2 border-yellow-500/50 mx-auto">
-                  <Trophy className="text-yellow-500" size={40} />
+                  <span className="text-yellow-500 text-3xl font-bold">#1</span>
                 </div>
                 <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-full bg-yellow-500 text-black font-bold flex items-center justify-center text-lg">1</div>
               </div>
@@ -144,7 +148,7 @@ export default function Leaderboard() {
             >
               <div className="relative inline-block">
                 <div className="w-20 h-20 rounded-full bg-amber-700/20 flex items-center justify-center border-2 border-amber-700/50 mx-auto">
-                  <Medal className="text-amber-700" size={32} />
+                  <span className="text-amber-700 text-2xl font-bold">#3</span>
                 </div>
                 <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-amber-700 text-white font-bold flex items-center justify-center text-sm">3</div>
               </div>
@@ -166,14 +170,66 @@ export default function Leaderboard() {
         </div>
       )}
 
+      {/* User Rank Section */}
+      {publicKey && !loading && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-primary/5 border border-primary/20 rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden"
+        >
+          <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-3xl rounded-full -mr-16 -mt-16" />
+          
+          <div className="flex items-center gap-6 z-10">
+            <div className="w-16 h-16 rounded-2xl bg-primary flex flex-col items-center justify-center shadow-lg shadow-primary/20">
+              <span className="text-[10px] uppercase font-bold text-white/60 leading-none mb-1">Rank</span>
+              <span className="text-2xl font-display font-bold text-white">
+                {userRank > 0 ? `#${userRank}` : '—'}
+              </span>
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-widest font-bold text-primary mb-1">Your Current Position</p>
+              <h3 className="text-xl font-mono font-bold text-white">
+                {userWallet ? formatWallet(userWallet) : 'Wallet Not Connected'}
+              </h3>
+              {userRank === 0 && (
+                <p className="text-xs text-muted mt-1 italic">You are not yet ranked. Start mining to join the leaderboard!</p>
+              )}
+            </div>
+          </div>
+
+          {userMiner && (
+            <div className="flex items-center gap-8 md:gap-12 z-10">
+              <div className="text-center md:text-right">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-muted mb-1">Total Earned</p>
+                <div className="flex items-center justify-center md:justify-end gap-2">
+                  <span className="text-2xl font-display font-bold text-green-500">{formatNumber(userMiner.totalEarned)}</span>
+                  <img 
+                    src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                    alt="EXN" 
+                    className="w-5 h-5 rounded-full"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </div>
+              <div className="text-center md:text-right">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-muted mb-1">Hashpower</p>
+                <div className="flex items-center justify-center md:justify-end gap-1">
+                  <span className="text-2xl font-mono font-bold text-white">{formatNumber(userMiner.hashpower)}</span>
+                  <span className="text-xs text-muted font-bold">TH/s</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* Search and List */}
       <div className="space-y-6">
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
           <input 
             type="text" 
             placeholder="Search for a miner..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+            className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary/50 transition-colors"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -195,7 +251,6 @@ export default function Leaderboard() {
                   <tr>
                     <td colSpan={4} className="p-20 text-center">
                       <div className="flex flex-col items-center justify-center gap-3 text-muted">
-                        <Loader2 className="animate-spin" />
                         <p className="text-xs uppercase tracking-widest">Compiling rankings...</p>
                       </div>
                     </td>
@@ -223,9 +278,6 @@ export default function Leaderboard() {
                         </td>
                         <td className="p-6">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-                              <User size={16} className="text-muted group-hover:text-primary transition-colors" />
-                            </div>
                             <div>
                               <p className="text-sm font-mono font-bold">{formatWallet(miner.wallet)}</p>
                               <div className="flex items-center gap-2 mt-0.5">
@@ -244,7 +296,6 @@ export default function Leaderboard() {
                         </td>
                         <td className="p-6">
                           <div className="flex items-center gap-2">
-                            <Zap size={14} className="text-primary" />
                             <span className="text-sm font-mono font-bold">{formatNumber(miner.hashpower)}</span>
                             <span className="text-[10px] text-muted">TH/s</span>
                           </div>

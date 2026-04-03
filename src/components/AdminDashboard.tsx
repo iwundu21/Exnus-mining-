@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, User, Zap, Search, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { formatNumber, cn } from '../lib/utils';
 import { useWallet } from '@solana/wallet-adapter-react';
 import axios from 'axios';
@@ -177,7 +176,6 @@ export default function AdminDashboard() {
       <header className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-display font-bold tracking-tight flex items-center gap-3">
-            <Shield className="text-primary" size={32} />
             Admin Control
           </h2>
           <p className="text-muted text-sm mt-1">Manage network hashpower and monitor user activity.</p>
@@ -201,11 +199,10 @@ export default function AdminDashboard() {
         {/* Miner Table Area */}
         <div className="xl:col-span-3 space-y-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
             <input 
               type="text" 
               placeholder="Search by wallet address..."
-              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-sm focus:outline-none focus:border-primary/50 transition-colors"
+              className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary/50 transition-colors"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -240,7 +237,6 @@ export default function AdminDashboard() {
                     <tr>
                       <td colSpan={6} className="p-12 text-center">
                         <div className="flex flex-col items-center justify-center gap-3 text-muted">
-                          <Loader2 className="animate-spin" />
                           <p className="text-xs uppercase tracking-widest">Loading network data...</p>
                         </div>
                       </td>
@@ -253,9 +249,6 @@ export default function AdminDashboard() {
                       >
                         <td className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
-                              <User size={14} className="text-muted group-hover:text-primary transition-colors" />
-                            </div>
                             <span className="text-sm font-mono font-bold truncate max-w-[120px]" title={miner.wallet}>
                               {formatWallet(miner.wallet)}
                             </span>
@@ -343,7 +336,6 @@ export default function AdminDashboard() {
               >
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 text-primary">
-                    <Zap size={18} />
                     <h3 className="font-bold">Grant Hashpower</h3>
                   </div>
                   <p className="text-xs text-muted">Updating power for:</p>
@@ -369,7 +361,7 @@ export default function AdminDashboard() {
                     disabled={submitting || !newHashpower}
                     className="w-full py-4 bg-primary text-white rounded-xl font-bold text-sm tracking-widest uppercase hover:bg-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {submitting ? <Loader2 className="animate-spin" size={16} /> : 'Update Power'}
+                    {submitting ? 'Updating...' : 'Update Power'}
                   </button>
                 </div>
 
@@ -379,16 +371,12 @@ export default function AdminDashboard() {
                     animate={{ opacity: 1, y: 0 }}
                     className={`p-3 rounded-lg flex items-start gap-2 text-xs ${message.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
                   >
-                    {message.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
                     <span>{message.text}</span>
                   </motion.div>
                 )}
               </motion.div>
             ) : (
               <div className="p-8 border border-dashed border-white/10 rounded-2xl text-center space-y-4">
-                <div className="w-12 h-12 rounded-full bg-white/5 mx-auto flex items-center justify-center">
-                  <User className="text-muted" size={20} />
-                </div>
                 <p className="text-xs text-muted leading-relaxed">
                   Select a miner from the table to manage their hashpower settings.
                 </p>
@@ -400,7 +388,6 @@ export default function AdminDashboard() {
           <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4">
             <div className="space-y-2">
               <h3 className="font-bold text-primary flex items-center gap-2">
-                <Zap size={18} />
                 Mining Control
               </h3>
               <p className="text-xs text-muted leading-relaxed">
@@ -413,7 +400,7 @@ export default function AdminDashboard() {
               disabled={togglingPause}
               className={`w-full py-3 rounded-xl font-bold text-xs tracking-widest uppercase transition-all border ${paused ? 'bg-green-500/10 text-green-500 border-green-500/30 hover:bg-green-500/20' : 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30 hover:bg-yellow-500/20'} disabled:opacity-50 flex items-center justify-center gap-2`}
             >
-              {togglingPause ? <Loader2 className="animate-spin" size={14} /> : (paused ? 'Resume Mining' : 'Pause Mining')}
+              {togglingPause ? 'Toggling...' : (paused ? 'Resume Mining' : 'Pause Mining')}
             </button>
           </div>
 
@@ -421,7 +408,6 @@ export default function AdminDashboard() {
           <div className="p-6 bg-white/5 border border-white/10 rounded-2xl space-y-4">
             <div className="space-y-2">
               <h3 className="font-bold text-primary flex items-center gap-2">
-                <Zap size={18} />
                 Set Genesis Time
               </h3>
               <p className="text-xs text-muted leading-relaxed">
@@ -441,7 +427,7 @@ export default function AdminDashboard() {
                 disabled={settingGenesis || !genesisDatetime}
                 className="w-full py-3 bg-primary/20 text-primary rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-primary/30 transition-all border border-primary/30 disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {settingGenesis ? <Loader2 className="animate-spin" size={14} /> : 'Update Genesis Time'}
+                {settingGenesis ? 'Updating...' : 'Update Genesis Time'}
               </button>
             </div>
 
@@ -451,7 +437,6 @@ export default function AdminDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`p-3 rounded-lg flex items-start gap-2 text-xs ${genesisMessage.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
               >
-                {genesisMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
                 <span>{genesisMessage.text}</span>
               </motion.div>
             )}
@@ -461,7 +446,6 @@ export default function AdminDashboard() {
           <div className="p-6 bg-red-500/5 border border-red-500/20 rounded-2xl space-y-4 mt-8">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-red-500">
-                <AlertCircle size={18} />
                 <h3 className="font-bold">Danger Zone</h3>
               </div>
               <p className="text-xs text-muted leading-relaxed">
@@ -485,7 +469,7 @@ export default function AdminDashboard() {
                     disabled={clearingHistory}
                     className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-red-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {clearingHistory ? <Loader2 className="animate-spin" size={14} /> : 'Yes, Delete'}
+                    {clearingHistory ? 'Deleting...' : 'Yes, Delete'}
                   </button>
                   <button 
                     onClick={() => setShowClearConfirm(false)}
@@ -504,7 +488,6 @@ export default function AdminDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`p-3 rounded-lg flex items-start gap-2 text-xs ${clearMessage.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
               >
-                {clearMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
                 <span>{clearMessage.text}</span>
               </motion.div>
             )}
@@ -514,7 +497,6 @@ export default function AdminDashboard() {
           <div className="p-6 bg-red-600/10 border border-red-600/30 rounded-2xl space-y-4">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-red-600">
-                <AlertCircle size={18} />
                 <h3 className="font-bold">Factory Reset</h3>
               </div>
               <p className="text-xs text-muted leading-relaxed">
@@ -538,7 +520,7 @@ export default function AdminDashboard() {
                     disabled={resettingFactory}
                     className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-xs tracking-widest uppercase hover:bg-red-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {resettingFactory ? <Loader2 className="animate-spin" size={14} /> : 'YES, RESET ALL'}
+                    {resettingFactory ? 'Resetting...' : 'YES, RESET ALL'}
                   </button>
                   <button 
                     onClick={() => setShowResetConfirm(false)}
@@ -557,7 +539,6 @@ export default function AdminDashboard() {
                 animate={{ opacity: 1, y: 0 }}
                 className={`p-3 rounded-lg flex items-start gap-2 text-xs ${resetMessage.type === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}
               >
-                {resetMessage.type === 'success' ? <CheckCircle2 size={14} className="mt-0.5 shrink-0" /> : <AlertCircle size={14} className="mt-0.5 shrink-0" />}
                 <span>{resetMessage.text}</span>
               </motion.div>
             )}

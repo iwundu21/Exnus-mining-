@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
-import { History as HistoryIcon, Hash, Clock, Coins, X, ExternalLink, User } from 'lucide-react';
 import { formatNumber, cn } from '../lib/utils';
 import { format } from 'date-fns';
+import CopyButton from './CopyButton';
 
 const formatWallet = (wallet: string) => {
   if (!wallet) return '';
@@ -56,15 +56,15 @@ function BlockDetailsDialog({ block, onClose }: { block: any, onClose: () => voi
         <header className="p-6 border-b border-white/5 flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <h3 className="text-xl font-bold flex items-center gap-2">
-              <Hash className="text-primary shrink-0" size={20} />
               <span className="truncate">Block #{block.blockNumber} Details</span>
             </h3>
-            <p className="text-xs text-muted mt-1 font-mono break-all">
+            <p className="text-xs text-muted mt-1 font-mono break-all flex items-center gap-2">
               Hash: {block.hash || 'GENESIS_BLOCK_HASH_0000000000000000'}
+              <CopyButton value={block.hash || 'GENESIS_BLOCK_HASH_0000000000000000'} />
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors shrink-0">
-            <X size={20} />
+            Close
           </button>
         </header>
 
@@ -93,12 +93,12 @@ function BlockDetailsDialog({ block, onClose }: { block: any, onClose: () => voi
                   rewards.map((reward: any, i) => (
                     <div key={i} className="grid grid-cols-7 gap-4 p-4 items-center text-sm font-mono hover:bg-white/[0.01] transition-colors">
                       <div className="col-span-1 flex items-center gap-2">
-                        <User size={12} className="text-muted shrink-0" />
                         <span className="text-primary font-bold truncate">{formatWallet(reward.wallet)}</span>
                       </div>
                       <div className="col-span-2">
-                        <div className="font-mono text-[9px] text-primary/70 bg-primary/5 px-2 py-1 rounded border border-primary/10 truncate max-w-[200px]">
-                          {reward.rewardHash || 'PENDING_HASH_GENERATION...'}
+                        <div className="font-mono text-[9px] text-primary/70 bg-primary/5 px-2 py-1 rounded border border-primary/10 flex items-center justify-between gap-2 w-full max-w-[180px]">
+                          <span className="truncate flex-1">{reward.rewardHash || 'PENDING_HASH_GENERATION...'}</span>
+                          <CopyButton value={reward.rewardHash || ''} />
                         </div>
                       </div>
                       <div className="col-span-1 font-bold text-green-500 whitespace-nowrap flex items-center gap-1">
@@ -158,7 +158,9 @@ export default function MiningHistory() {
     isFetchingRef.current = true;
     try {
       const res = await axios.get('/api/history', { timeout: 10000 });
-      if (Array.isArray(res.data)) {
+      // Check if response is JSON and an array
+      const contentType = res.headers['content-type'];
+      if (contentType && contentType.includes('application/json') && Array.isArray(res.data)) {
         // Deduplicate history by blockNumber and timestamp using a Map
         const historyMap = new Map();
         res.data.forEach((item: any) => {
@@ -168,8 +170,11 @@ export default function MiningHistory() {
           }
         });
         setHistory(Array.from(historyMap.values()));
+      } else if (typeof res.data === 'string' && res.data.includes('<!doctype html>')) {
+        // Silently ignore "Starting Server" HTML pages during startup
+        console.log("Server is still starting up, waiting for JSON response...");
       } else {
-        console.error("Expected array for history, got:", res.data);
+        console.error("Expected array for history, got:", typeof res.data, res.data);
       }
     } catch (err) {
       console.error("MiningHistory fetch error:", err);
@@ -214,7 +219,6 @@ export default function MiningHistory() {
           <div className="space-y-2">
             {paginatedHistory.length === 0 ? (
               <div className="p-20 text-center opacity-20">
-                <HistoryIcon size={48} className="mx-auto mb-4" />
                 <p className="text-sm">Synchronizing with network ledger...</p>
               </div>
             ) : (
@@ -228,14 +232,13 @@ export default function MiningHistory() {
                   className="grid grid-cols-8 gap-4 p-6 items-center hover:bg-white/[0.05] transition-colors group cursor-pointer border border-transparent hover:border-primary/20 rounded-xl"
                 >
                   <div className="col-span-1 flex items-center gap-3">
-                    <Hash size={14} className="text-muted group-hover:text-primary transition-colors" />
                     <span className="font-mono font-bold text-sm">#{block.blockNumber}</span>
                   </div>
 
                   <div className="col-span-2">
-                    <div className="font-mono text-[9px] text-primary/70 group-hover:text-primary transition-all flex items-center gap-2 group/hash bg-primary/5 px-3 py-1.5 rounded-md border border-primary/20 group-hover:border-primary/40 group-hover:bg-primary/10 shadow-[0_0_10px_rgba(var(--primary-rgb),0.05)] w-fit">
-                      <span className="truncate max-w-[160px] tracking-tighter">{block.hash || '0000000000000000000000000000000000000000000000000000000000000000'}</span>
-                      <ExternalLink size={10} className="opacity-40 group-hover/hash:opacity-100 transition-opacity shrink-0" />
+                    <div className="font-mono text-[9px] text-primary/70 group-hover:text-primary transition-all flex items-center gap-2 group/hash bg-primary/5 px-3 py-1.5 rounded-md border border-primary/20 group-hover:border-primary/40 group-hover:bg-primary/10 shadow-[0_0_10px_rgba(var(--primary-rgb),0.05)] w-full max-w-[180px]">
+                      <span className="truncate flex-1 tracking-tighter">{block.hash || '0000000000000000000000000000000000000000000000000000000000000000'}</span>
+                      <CopyButton value={block.hash || '0000000000000000000000000000000000000000000000000000000000000000'} />
                     </div>
                   </div>
                   

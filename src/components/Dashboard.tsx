@@ -3,12 +3,13 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'motion/react';
-import { Cpu, Timer, Database, TrendingUp, Users, Wallet, ArrowUp, ArrowDown, Coins, Info } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatNumber, cn } from '../lib/utils';
 import { TOTAL_SUPPLY, BLOCK_INTERVAL } from '../lib/constants';
 import BuyHashpowerDialog from './BuyHashpowerDialog';
 import Onboarding from './Onboarding';
+import StatTooltip from './StatTooltip';
+import CopyButton from './CopyButton';
 
 interface Status {
   currentBlock: number;
@@ -32,7 +33,7 @@ const AnimatedNumber = ({ value, className }: { value: number, className?: strin
 
 const TrendIndicator = ({ trend }: { trend: number }) => (
   <span className={cn("flex items-center text-[10px] font-bold", trend >= 0 ? "text-green-500" : "text-red-500")}>
-    {trend >= 0 ? <ArrowUp size={10} className="mr-0.5" /> : <ArrowDown size={10} className="mr-0.5" />}
+    {trend >= 0 ? "+" : "-"}
     {Math.abs(trend).toFixed(2)}%
   </span>
 );
@@ -85,23 +86,35 @@ export default function Dashboard() {
       
       const [statusRes, userRes, diffRes, historyRes] = await Promise.all([
         axios.get('/api/status', { timeout: 30000 }),
-        userUrl ? axios.get(userUrl, { timeout: 30000 }) : Promise.resolve({ data: null }),
-        axios.get('https://blockchain.info/q/getdifficulty', { timeout: 15000 }).catch(() => ({ data: null })),
+        userUrl ? axios.get(userUrl, { timeout: 30000 }) : Promise.resolve({ data: null, headers: {} }),
+        axios.get('https://blockchain.info/q/getdifficulty', { timeout: 15000 }).catch(() => ({ data: null, headers: {} })),
         axios.get('/api/history', { timeout: 15000 })
       ]);
       
-      const newStatus = statusRes.data;
-      
-      // Only update if the difference is significant (e.g., > 2 seconds)
-      if (Math.abs((newStatus.countdown) - (status?.countdown || 0)) > 2) {
-        newStatus.countdown = Math.max(0, newStatus.countdown);
-        setStatus(newStatus);
+      // Check for JSON response
+      const statusContentType = statusRes.headers['content-type'];
+      if (statusContentType && statusContentType.includes('application/json')) {
+        const newStatus = statusRes.data;
+        
+        // Only update if the difference is significant (e.g., > 2 seconds)
+        if (Math.abs((newStatus.countdown) - (status?.countdown || 0)) > 2) {
+          newStatus.countdown = Math.max(0, newStatus.countdown);
+          setStatus(newStatus);
+        } else {
+          // Keep the existing countdown to avoid jumps
+          setStatus(prev => ({ ...newStatus, countdown: prev?.countdown || newStatus.countdown }));
+        }
       } else {
-        // Keep the existing countdown to avoid jumps
-        setStatus(prev => ({ ...newStatus, countdown: prev?.countdown || newStatus.countdown }));
+        console.log("Server is still starting up, waiting for JSON status response...");
       }
-      setUser(userRes.data);
-      if (Array.isArray(historyRes.data)) {
+
+      const userContentType = userRes.headers['content-type'];
+      if (userContentType && userContentType.includes('application/json')) {
+        setUser(userRes.data);
+      }
+
+      const historyContentType = historyRes.headers['content-type'];
+      if (historyContentType && historyContentType.includes('application/json') && Array.isArray(historyRes.data)) {
         const uniqueHistory = historyRes.data.filter((v, i, a) => a.findIndex(v2 => (v2.blockNumber === v.blockNumber)) === i);
         setHistory(uniqueHistory.slice(0, 10).reverse());
       }
@@ -131,6 +144,27 @@ export default function Dashboard() {
     }, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (publicKey && user && (user.country === 'Unknown' || !user.countryCode)) {
+      const detectGeo = async () => {
+        try {
+          const res = await axios.get('https://ipapi.co/json/', { timeout: 5000 });
+          if (res.data && res.data.country_name && res.data.country_code) {
+            await axios.post(`/api/user/${publicKey.toBase58()}/geo`, {
+              country: res.data.country_name,
+              countryCode: res.data.country_code
+            });
+            // Refresh user data to show the new country/flag
+            fetchData();
+          }
+        } catch (err) {
+          console.error("Client-side geo detection failed:", err);
+        }
+      };
+      detectGeo();
+    }
+  }, [publicKey, user]);
 
   useEffect(() => {
     fetchData();
@@ -242,7 +276,6 @@ export default function Dashboard() {
           onClick={() => setIsOnboardingOpen(true)}
           className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-xs font-bold text-white/60 hover:text-white self-start md:self-end"
         >
-          <Info size={14} />
           Tutorial
         </button>
       </header>
@@ -260,7 +293,12 @@ export default function Dashboard() {
             </div>
           )}
           <div className="data-value">
-            #<AnimatedNumber value={status?.currentBlock || 0} />
+            <StatTooltip 
+              title="Total Mined" 
+              description="The current block height of the Exnus network. Each block represents a successful mining event and reward distribution."
+            >
+              #<AnimatedNumber value={status?.currentBlock || 0} />
+            </StatTooltip>
           </div>
           <p className="text-[10px] text-muted">Total Mined: {formatNumber(status?.currentBlock || 0)} / {formatNumber(status?.totalBlocks || 0)}</p>
         </motion.div>
@@ -273,8 +311,12 @@ export default function Dashboard() {
         >
           <div className="flex items-center justify-between data-label">
             <div className="flex items-center gap-2">
-              <Timer size={14} />
-              <span>{status?.currentBlock === 0 ? 'Mining Starts In' : 'Next Reward'}</span>
+              <StatTooltip 
+                title="Next Reward" 
+                description="The estimated time until the next block is mined and rewards are distributed to all active miners based on their hashrate share."
+              >
+                <span>{status?.currentBlock === 0 ? 'Mining Starts In' : 'Next Reward'}</span>
+              </StatTooltip>
             </div>
             <span className="text-primary font-mono text-xl">
               {status ? formatTime(status.countdown) : '0:00'}
@@ -282,28 +324,20 @@ export default function Dashboard() {
           </div>
           <div className="data-value text-primary flex items-center gap-2">
             <AnimatedNumber value={status?.blockReward || 0} />
-            <span className="relative group cursor-help flex items-center gap-1 text-xs text-muted">
-              <img 
-                src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
-                alt="EXN" 
-                className="w-4 h-4 rounded-full"
-                referrerPolicy="no-referrer"
-              />
-              EXN
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-4 bg-black border border-white/10 text-white text-[10px] rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                <div className="flex items-center gap-2 mb-2">
-                  <img 
-                    src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
-                    alt="EXN" 
-                    className="w-6 h-6 rounded-full"
-                    referrerPolicy="no-referrer"
-                  />
-                  <p className="font-bold text-primary">EXN Token</p>
-                </div>
-                <p className="text-muted mb-2">Total Supply: {formatNumber(TOTAL_SUPPLY)}</p>
-                <p className="leading-relaxed">Exnus (EXN) is the native utility token powering the Exnus Mining Engine, used for network governance and reward distribution.</p>
-              </div>
-            </span>
+            <StatTooltip 
+              title="EXN Token" 
+              description={`Exnus (EXN) is the native utility token powering the mining engine. Total Supply: ${formatNumber(TOTAL_SUPPLY)}. Used for governance and rewards.`}
+            >
+              <span className="flex items-center gap-1 text-xs text-muted">
+                <img 
+                  src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafybeid2os6ocficy2ijgrhbxv4triyfnmrls36grwp6sznsf2r7u7e2km" 
+                  alt="EXN" 
+                  className="w-4 h-4 rounded-full"
+                  referrerPolicy="no-referrer"
+                />
+                EXN
+              </span>
+            </StatTooltip>
           </div>
           <p className="text-[10px] text-muted">Block Interval: {BLOCK_INTERVAL / 60}m</p>
         </motion.div>
@@ -316,14 +350,25 @@ export default function Dashboard() {
         >
           <div className="data-label">
             <div className="flex items-center gap-2">
-              <Cpu size={14} />
-              <span>Total Hashrate</span>
+              <StatTooltip 
+                title="Total Hashrate" 
+                description="The combined computational power of all miners in the network. Higher hashrate means a more secure and competitive network."
+              >
+                <span>Total Hashrate</span>
+              </StatTooltip>
             </div>
           </div>
-          <div className="data-value">
-            <AnimatedNumber value={status?.totalHashpower || 0} /> <span className="text-xs text-muted">TH/s</span>
+          <div className="data-value flex items-center gap-2">
+            <AnimatedNumber value={status?.totalHashpower || 0} /> 
+            <span className="text-xs text-muted">TH/s</span>
+            <CopyButton value={status?.totalHashpower || 0} className="ml-1" />
           </div>
-          <p className="text-[10px] text-muted">Network Difficulty: {difficulty}</p>
+          <StatTooltip 
+            title="Network Difficulty" 
+            description="A measure of how difficult it is to find a new block. It adjusts based on the total hashrate to keep block times consistent."
+          >
+            <p className="text-[10px] text-muted">Network Difficulty: {difficulty}</p>
+          </StatTooltip>
         </motion.div>
 
         <motion.div 
@@ -334,8 +379,12 @@ export default function Dashboard() {
         >
           <div className="data-label">
             <div className="flex items-center gap-2">
-              <Users size={14} />
-              <span>Active Miners</span>
+              <StatTooltip 
+                title="Active Miners" 
+                description="The number of unique wallets currently contributing hashrate to the network. More miners increase network decentralization."
+              >
+                <span>Active Miners</span>
+              </StatTooltip>
             </div>
           </div>
           <div className="data-value">
@@ -387,7 +436,12 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-2 gap-8 pt-4 border-t border-white/5">
                 <div className="space-y-1">
-                  <p className="data-label">Total Distributed</p>
+                  <StatTooltip 
+                    title="Total Distributed" 
+                    description="The total amount of EXN tokens that have been mined and distributed to users so far. This represents the current circulating supply."
+                  >
+                    <p className="data-label">Total Distributed</p>
+                  </StatTooltip>
                   <div className="flex items-center gap-1">
                     <p className="text-xl font-mono font-bold text-green-500">{formatNumber(status?.totalDistributed || 0)}</p>
                     <img 
@@ -400,7 +454,12 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="space-y-1 text-right">
-                  <p className="data-label">Remaining Supply</p>
+                  <StatTooltip 
+                    title="Remaining Supply" 
+                    description="The amount of EXN tokens left in the treasury to be mined. Once this reaches zero, no more tokens will be issued by the network."
+                  >
+                    <p className="data-label">Remaining Supply</p>
+                  </StatTooltip>
                   <div className="flex items-center justify-end gap-1">
                     <p className="text-xl font-mono font-bold">{formatNumber(TOTAL_SUPPLY - (status?.totalDistributed || 0))}</p>
                     <img 
@@ -442,7 +501,14 @@ export default function Dashboard() {
               className="data-card p-8 space-y-8"
             >
               <div className="space-y-2">
-                <p className="data-label text-primary">Your Mining Status</p>
+                <div className="flex justify-between items-center">
+                  <p className="data-label text-primary">Your Mining Status</p>
+                  {user.rank && (
+                    <div className="bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-bold text-primary uppercase tracking-widest">Rank #{user.rank}</span>
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full overflow-hidden flex items-center justify-center bg-primary/20 border border-primary/30">
                     <img 
@@ -454,10 +520,11 @@ export default function Dashboard() {
                   </div>
                   <div>
                     <h3 className="text-2xl font-display font-bold flex items-center gap-2">
-                      <AnimatedNumber value={user.totalEarned} /> 
+                      <AnimatedNumber value={(user.totalEarned || 0) - (user.withdrawnAmount || 0)} /> 
                       <span className="text-xs text-muted">EXN</span>
+                      <CopyButton value={(user.totalEarned || 0) - (user.withdrawnAmount || 0)} className="ml-1" />
                     </h3>
-                    <p className="text-[10px] text-muted uppercase tracking-widest">Total Rewards</p>
+                    <p className="text-[10px] text-muted uppercase tracking-widest">Available Balance</p>
                   </div>
                 </div>
               </div>
@@ -465,7 +532,12 @@ export default function Dashboard() {
               <div className="space-y-4 pt-6 border-t border-white/5">
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-1">
-                    <span className="text-xs text-muted">SOL Balance</span>
+                    <StatTooltip 
+                      title="SOL Balance" 
+                      description="Your current Solana (SOL) balance. SOL is used to purchase hashpower and pay for transaction fees on the network."
+                    >
+                      <span className="text-xs text-muted">SOL Balance</span>
+                    </StatTooltip>
                     <img 
                       src="https://coffee-abundant-skunk-245.mypinata.cloud/ipfs/bafkreihx2yxwcaucavhn7lf55mgi2jqwkf66sj4pmaucthokzgrjty525i" 
                       alt="SOL" 
@@ -478,11 +550,24 @@ export default function Dashboard() {
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted">Current Hashpower</span>
-                  <span className="text-sm font-mono font-bold"><AnimatedNumber value={user.hashpower} /> TH/s</span>
+                  <StatTooltip 
+                    title="Current Hashpower" 
+                    description="Your active mining power in Terahashes per second (TH/s). This determines your share of the network rewards."
+                  >
+                    <span className="text-xs text-muted">Current Hashpower</span>
+                  </StatTooltip>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-mono font-bold"><AnimatedNumber value={user.hashpower} /> TH/s</span>
+                    <CopyButton value={user.hashpower} />
+                  </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted">Network Share</span>
+                  <StatTooltip 
+                    title="Network Share" 
+                    description="Your percentage of the total network hashrate. This directly correlates to the percentage of block rewards you will receive."
+                  >
+                    <span className="text-xs text-muted">Network Share</span>
+                  </StatTooltip>
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-mono font-bold">
                       {status?.totalHashpower ? ((user.hashpower / status.totalHashpower) * 100).toFixed(4) : 0}%
@@ -490,7 +575,12 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted">Daily Est.</span>
+                  <StatTooltip 
+                    title="Daily Est." 
+                    description="An estimate of how many EXN tokens you will earn in a 24-hour period based on your current hashrate and network conditions."
+                  >
+                    <span className="text-xs text-muted">Daily Est.</span>
+                  </StatTooltip>
                   <div className="flex items-center gap-1">
                     <span className="text-sm font-mono font-bold text-primary">
                       ~<AnimatedNumber value={
@@ -519,9 +609,6 @@ export default function Dashboard() {
             </motion.div>
           ) : (
             <div className="data-card p-8 text-center space-y-6">
-              <div className="w-16 h-16 rounded-full bg-white/5 mx-auto flex items-center justify-center border border-white/10">
-                <Wallet className="text-primary" size={24} />
-              </div>
               <div className="space-y-2">
                 <h3 className="text-lg font-bold tracking-tight">Connect to Mining Engine</h3>
                 <p className="text-xs text-muted leading-relaxed max-w-[240px] mx-auto">

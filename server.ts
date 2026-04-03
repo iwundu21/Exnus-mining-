@@ -88,26 +88,30 @@ async function clearMiningData() {
   state.genesisBlock = 0;
   
   // 2. Clear Firestore collections
-  // Clear 'users'
-  const usersSnap = await getDocs(collection(db, 'users'));
-  for (const d of usersSnap.docs) {
-    // Clear user history subcollection
-    const userHistorySnap = await getDocs(collection(db, 'users', d.id, 'history'));
-    for (const uh of userHistorySnap.docs) {
-      await deleteDoc(doc(db, 'users', d.id, 'history', uh.id));
+  try {
+    // Clear 'users'
+    const usersSnap = await getDocs(collection(db, 'users'));
+    for (const d of usersSnap.docs) {
+      // Clear user history subcollection
+      const userHistorySnap = await getDocs(collection(db, 'users', d.id, 'history'));
+      for (const uh of userHistorySnap.docs) {
+        await deleteDoc(doc(db, 'users', d.id, 'history', uh.id));
+      }
+      await deleteDoc(doc(db, 'users', d.id));
     }
-    await deleteDoc(doc(db, 'users', d.id));
-  }
-  
-  // Clear 'history'
-  const historySnap = await getDocs(collection(db, 'history'));
-  for (const d of historySnap.docs) {
-    // Clear rewards subcollection
-    const rewardsSnap = await getDocs(collection(db, 'history', d.id, 'rewards'));
-    for (const r of rewardsSnap.docs) {
-      await deleteDoc(doc(db, 'history', d.id, 'rewards', r.id));
+    
+    // Clear 'history'
+    const historySnap = await getDocs(collection(db, 'history'));
+    for (const d of historySnap.docs) {
+      // Clear rewards subcollection
+      const rewardsSnap = await getDocs(collection(db, 'history', d.id, 'rewards'));
+      for (const r of rewardsSnap.docs) {
+        await deleteDoc(doc(db, 'history', d.id, 'rewards', r.id));
+      }
+      await deleteDoc(doc(db, 'history', d.id));
     }
-    await deleteDoc(doc(db, 'history', d.id));
+  } catch (e: any) {
+    handleFirestoreError(e, OperationType.DELETE, 'all');
   }
   
   console.log("✅ Mining data cleared.");
@@ -153,6 +157,52 @@ async function ensureSynced() {
   }
 }
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: undefined, // Server-side doesn't have a current user in the same way
+      email: undefined,
+      emailVerified: undefined,
+      isAnonymous: undefined,
+      tenantId: undefined,
+      providerInfo: []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 // Sync state from Firestore on startup
 let initialSyncDone = false;
 async function syncState() {
@@ -172,11 +222,13 @@ async function syncState() {
             console.warn(`⚠️  Database ${dbId} not found. Falling back to (default).`);
             db = getFirestore(firebaseApp, "(default)");
             statusDoc = await getDoc(doc(db, 'status', 'global'));
+          } else if (e.message.includes("permission") || e.code === 'permission-denied') {
+            handleFirestoreError(e, OperationType.GET, 'status/global');
           } else {
             throw e;
           }
         }
-        if (statusDoc.exists()) {
+        if (statusDoc && statusDoc.exists()) {
           const data = unpack(statusDoc.data());
           const firestoreGenesis = Number(data.genesisTimestamp);
           
@@ -184,12 +236,16 @@ async function syncState() {
             GENESIS_TIMESTAMP = firestoreGenesis;
           } else {
             // Initialize if not present
-            await setDoc(doc(db, 'status', 'global'), pack({
-              currentBlock: 0,
-              lastBlockTimestamp: DEFAULT_GENESIS_TIMESTAMP,
-              totalDistributed: 0,
-              genesisTimestamp: DEFAULT_GENESIS_TIMESTAMP
-            }));
+            try {
+              await setDoc(doc(db, 'status', 'global'), pack({
+                currentBlock: 0,
+                lastBlockTimestamp: DEFAULT_GENESIS_TIMESTAMP,
+                totalDistributed: 0,
+                genesisTimestamp: DEFAULT_GENESIS_TIMESTAMP
+              }));
+            } catch (e: any) {
+              handleFirestoreError(e, OperationType.WRITE, 'status/global');
+            }
             GENESIS_TIMESTAMP = DEFAULT_GENESIS_TIMESTAMP;
           }
           
@@ -208,7 +264,12 @@ async function syncState() {
           }
         }
 
-        const usersSnap = await getDocs(collection(db, 'users'));
+        let usersSnap;
+        try {
+          usersSnap = await getDocs(collection(db, 'users'));
+        } catch (e: any) {
+          handleFirestoreError(e, OperationType.GET, 'users');
+        }
         const users = usersSnap.docs.map(d => unpack(d.data()));
         
         // In a serverless environment, the DB is the absolute source of truth.
@@ -216,7 +277,12 @@ async function syncState() {
         // and to ensure we see updates from other instances.
         state.users = users;
 
-        const historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(50)));
+        let historySnap;
+        try {
+          historySnap = await getDocs(query(collection(db, 'history'), orderBy('blockNumber', 'desc'), limit(50)));
+        } catch (e: any) {
+          handleFirestoreError(e, OperationType.GET, 'history');
+        }
         state.history = historySnap.docs.map(d => unpack(d.data()));
         
         initialSyncDone = true;
@@ -273,6 +339,7 @@ async function getUser(wallet: string, req?: any) {
       referralId,
       hashpower: 0, 
       totalEarned: 0, 
+      withdrawnAmount: 0,
       history: [], 
       solSpent: 0,
       referralCount: 0,
@@ -298,20 +365,22 @@ async function getUser(wallet: string, req?: any) {
 
   // Detect country if missing or unknown
   if (user.country === 'Unknown' || !user.countryCode) {
-    const ip = (req?.ip || req?.headers['x-forwarded-for'] || user.ip || 'unknown').split(',')[0].trim();
-    if (ip !== 'unknown' && ip !== '::1' && ip !== '127.0.0.1') {
+    const forwarded = req?.headers['x-forwarded-for'];
+    const ip = typeof forwarded === 'string' ? forwarded.split(',')[0].trim() : (req?.socket?.remoteAddress || 'unknown');
+    
+    if (ip !== 'unknown' && ip !== '::1' && ip !== '127.0.0.1' && !ip.startsWith('10.') && !ip.startsWith('172.')) {
       try {
-        const geoRes = await axios.get(`http://ip-api.com/json/${ip}`, { timeout: 3000 });
-        if (geoRes.data && geoRes.data.status === 'success') {
-          user.country = geoRes.data.country;
-          user.countryCode = geoRes.data.countryCode;
+        // Use https and a slightly more reliable service if possible, or stick to ip-api with https
+        const geoRes = await axios.get(`https://ipapi.co/${ip}/json/`, { timeout: 5000 });
+        if (geoRes.data && !geoRes.data.error) {
+          user.country = geoRes.data.country_name;
+          user.countryCode = geoRes.data.country_code;
           user.ip = ip;
           
-          // Update in Firestore
-          await setDoc(doc(db, 'users', wallet), pack(user, ['wallet']));
+          await saveUser(user);
         }
       } catch (e) {
-        console.error("GeoIP error:", e);
+        console.error("GeoIP error for IP", ip, ":", e);
       }
     }
   }
@@ -327,8 +396,8 @@ async function getUser(wallet: string, req?: any) {
 async function saveUser(user: any) {
   try {
     await setDoc(doc(db, 'users', user.wallet), pack(user, ['wallet']));
-  } catch (e) {
-    console.error(`❌ Firestore Error (saveUser ${user.wallet}):`, e);
+  } catch (e: any) {
+    handleFirestoreError(e, OperationType.WRITE, `users/${user.wallet}`);
   }
 }
 
@@ -375,13 +444,17 @@ async function processBlock(): Promise<boolean> {
       }
       
       // Claim the block by incrementing the block number
-      transaction.set(statusRef, pack({
-        currentBlock: blockToMine + 1,
-        lastBlockTimestamp: blockTimestamp,
-        totalDistributed: state.totalDistributed, // Will update again after processing
-        genesisTimestamp: GENESIS_TIMESTAMP,
-        genesisBlock: state.genesisBlock
-      }), { merge: true });
+      try {
+        transaction.set(statusRef, pack({
+          currentBlock: blockToMine + 1,
+          lastBlockTimestamp: blockTimestamp,
+          totalDistributed: state.totalDistributed, // Will update again after processing
+          genesisTimestamp: GENESIS_TIMESTAMP,
+          genesisBlock: state.genesisBlock
+        }), { merge: true });
+      } catch (e: any) {
+        handleFirestoreError(e, OperationType.WRITE, 'status/global');
+      }
     });
     claimed = true;
   } catch (e: any) {
@@ -428,6 +501,31 @@ async function processBlock(): Promise<boolean> {
         const reward = Math.floor((user.hashpower / totalHashpower) * blockReward);
         user.totalEarned += reward;
         state.totalDistributed += reward;
+
+        // Referral commission: Referrer gets 10% of the reward
+        if (user.referredBy) {
+          const referrer = state.users.find(u => u.referralId === user.referredBy);
+          if (referrer) {
+            const commission = Math.floor(reward * 0.1);
+            if (commission > 0) {
+              referrer.totalEarned += commission;
+              referrer.referralRewards = (referrer.referralRewards || 0) + commission;
+              state.totalDistributed += commission;
+              
+              // Track referral reward
+              const refRecord = {
+                blockNumber: blockToMine,
+                reward: commission,
+                fromWallet: user.wallet,
+                timestamp: blockTimestamp,
+                type: 'referral_commission'
+              };
+              
+              batch.set(doc(db, 'users', referrer.wallet, 'referralHistory', `${blockToMine}-${user.wallet}`), pack(refRecord, ['blockNumber', 'timestamp', 'reward', 'fromWallet']));
+              batch.set(doc(db, 'users', referrer.wallet), pack(referrer, ['wallet', 'hashpower', 'totalEarned']));
+            }
+          }
+        }
 
         const rewardHash = crypto.createHash('sha256').update(`${blockToMine}-${blockTimestamp}-${user.wallet}-${reward}`).digest('hex');
         const record = {
@@ -698,10 +796,78 @@ app.get("/api/user/:wallet", async (req, res) => {
       return acc;
     }, []).slice(0, 20);
 
-    res.json({ ...user, history });
+    // Calculate rank
+    const sortedUsers = [...state.users].sort((a, b) => b.totalEarned - a.totalEarned);
+    const rank = sortedUsers.findIndex(u => u.wallet === user.wallet) + 1;
+
+    res.json({ ...user, history, rank });
   } catch (err) {
     console.error(`Error fetching user data for ${req.params.wallet}:`, err);
     res.status(500).json({ error: "Failed to fetch user data" });
+  }
+});
+
+// Update User Geo (Client-side fallback)
+app.post("/api/user/:wallet/geo", async (req, res) => {
+  try {
+    const { wallet } = req.params;
+    const { country, countryCode } = req.body;
+    
+    if (!country || !countryCode) {
+      return res.status(400).json({ error: "Country and countryCode are required" });
+    }
+
+    const user = await getUser(wallet, req);
+    user.country = country;
+    user.countryCode = countryCode;
+    
+    await saveUser(user);
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Error updating user geo:", err);
+    res.status(500).json({ error: "Failed to update geo" });
+  }
+});
+
+// Withdraw EXN
+app.post("/api/withdraw", async (req, res) => {
+  const { wallet, amount, signature } = req.body;
+
+  if (!wallet || !amount || !signature) {
+    return res.status(400).json({ error: "Missing parameters" });
+  }
+
+  try {
+    const user = await getUser(wallet, req);
+    const availableBalance = (user.totalEarned || 0) - (user.withdrawnAmount || 0);
+
+    if (amount > availableBalance) {
+      return res.status(400).json({ error: "Insufficient balance" });
+    }
+
+    // In a real scenario, we would verify the Solana transaction signature here
+    // to ensure the user actually signed the withdrawal transaction on-chain.
+    // For now, we'll assume the signature is valid if it's provided.
+    
+    // Update user state
+    user.withdrawnAmount = (user.withdrawnAmount || 0) + amount;
+    await saveUser(user);
+
+    // Record the withdrawal in the purchases collection (as per user request)
+    await addDoc(collection(db, 'purchases'), pack({
+      wallet,
+      type: 'withdrawal',
+      amount: amount,
+      currency: 'EXN',
+      signature,
+      timestamp: Math.floor(Date.now() / 1000),
+      status: 'completed'
+    }));
+
+    res.json({ success: true, newBalance: (user.totalEarned - user.withdrawnAmount) });
+  } catch (err) {
+    console.error(`Error processing withdrawal for ${wallet}:`, err);
+    res.status(500).json({ error: "Failed to process withdrawal" });
   }
 });
 
@@ -981,11 +1147,6 @@ async function startServer() {
   const PORT = 3000;
   console.log("🚀 Starting Exnus Mining Engine Server...");
 
-  // Sync state from Firestore
-  console.log("📦 Syncing state from Firestore...");
-  await syncState();
-  console.log("✅ State synced.");
-
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     console.log("🛠️  Initializing Vite middleware...");
@@ -1007,11 +1168,11 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Exnus Mining Engine Live on http://localhost:${PORT}`);
     
-    // Run initial sync
+    // Run initial sync in background after server starts listening
     (async () => {
-      console.log("🔍 Running initial block check...");
+      console.log("🔍 Running initial block check and state sync...");
       await syncState();
-      console.log("✅ Initial check complete. Engine is running in serverless mode.");
+      console.log("✅ Initial sync complete. Engine is running.");
     })();
   });
 }
