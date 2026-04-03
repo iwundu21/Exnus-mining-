@@ -53,10 +53,6 @@ export default function Referral() {
       value: `${((userData?.referralCount || 0) * 0.004).toFixed(3)} TH/s`,
     },
     {
-      label: "Referral Earnings",
-      value: `${(userData?.referralRewards || 0).toFixed(4)} EXN`,
-    },
-    {
       label: "Program Status",
       value: "Active",
     }
@@ -69,7 +65,7 @@ export default function Referral() {
     },
     {
       question: "When are bonuses applied?",
-      answer: "Referral bonuses are applied in two ways: 1) You and your friend both receive a 0.004 TH/s hashpower boost instantly after their first purchase. 2) You earn a permanent 10% commission on all mining rewards your referred friends earn."
+      answer: "Referral bonuses are applied instantly after your referred friend makes their first hashpower purchase. You and your friend both receive a 0.004 TH/s hashpower boost permanently."
     },
     {
       question: "Is there a limit to referrals?",

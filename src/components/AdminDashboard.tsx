@@ -26,6 +26,8 @@ export default function AdminDashboard() {
   const [miners, setMiners] = useState<Miner[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [selectedMiner, setSelectedMiner] = useState<Miner | null>(null);
   const [newHashpower, setNewHashpower] = useState<string>('');
   const [submitting, setSubmitting] = useState(false);
@@ -171,6 +173,9 @@ export default function AdminDashboard() {
     m.wallet.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const totalPages = Math.ceil(filteredMiners.length / itemsPerPage);
+  const paginatedMiners = filteredMiners.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   return (
     <div className="space-y-8 max-w-6xl mx-auto">
       <header className="flex items-center justify-between">
@@ -204,7 +209,10 @@ export default function AdminDashboard() {
               placeholder="Search by wallet address..."
               className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary/50 transition-colors"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCurrentPage(1);
+              }}
             />
           </div>
 
@@ -235,14 +243,14 @@ export default function AdminDashboard() {
                 <tbody className="divide-y divide-white/5">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="p-12 text-center">
+                      <td colSpan={7} className="p-12 text-center">
                         <div className="flex flex-col items-center justify-center gap-3 text-muted">
                           <p className="text-xs uppercase tracking-widest">Loading network data...</p>
                         </div>
                       </td>
                     </tr>
-                  ) : filteredMiners.length > 0 ? (
-                    filteredMiners.map((miner) => (
+                  ) : paginatedMiners.length > 0 ? (
+                    paginatedMiners.map((miner) => (
                       <tr 
                         key={miner.wallet}
                         className={`hover:bg-white/5 transition-colors group ${selectedMiner?.wallet === miner.wallet ? 'bg-primary/5' : ''}`}
@@ -312,7 +320,7 @@ export default function AdminDashboard() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={6} className="p-12 text-center text-muted text-sm">
+                      <td colSpan={7} className="p-12 text-center text-muted text-sm">
                         No miners found matching your search.
                       </td>
                     </tr>
@@ -321,6 +329,31 @@ export default function AdminDashboard() {
               </table>
             </div>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4">
+              <p className="text-[10px] text-muted uppercase tracking-widest font-bold">
+                Page <span className="text-white">{currentPage}</span> of <span className="text-white">{totalPages}</span>
+              </p>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  Prev
+                </button>
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Panel */}

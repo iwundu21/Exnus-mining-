@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useWallet } from '@solana/wallet-adapter-react';
+import axios from 'axios';
 
 interface Task {
   id: string;
@@ -14,47 +15,114 @@ interface Task {
 const TASKS: Task[] = [
   {
     id: 'twitter_follow',
-    title: 'Follow on Twitter',
-    description: 'Follow our official Twitter account for the latest updates.',
+    title: 'Follow on X',
+    description: 'Follow @exnusprotocol on X for the latest updates and announcements.',
     reward: 50,
-    link: 'https://twitter.com',
-    icon: null
+    link: 'https://x.com/exnusprotocol',
+    icon: <img src="https://img.icons8.com/ios-filled/50/ffffff/twitterx--v1.png" className="w-5 h-5" alt="X" referrerPolicy="no-referrer" />
   },
   {
     id: 'telegram_join',
-    title: 'Join Telegram Group',
-    description: 'Join our community on Telegram to discuss with other miners.',
+    title: 'Join Telegram Channel',
+    description: 'Join our official Telegram announcement channel for real-time updates.',
     reward: 50,
-    link: 'https://telegram.org',
-    icon: null
+    link: 'https://t.me/Exnusprotocol',
+    icon: <img src="https://img.icons8.com/ios-filled/50/ffffff/telegram-app.png" className="w-5 h-5" alt="Telegram" referrerPolicy="no-referrer" />
   },
   {
     id: 'discord_join',
     title: 'Join Discord Server',
     description: 'Get support and chat with the team on Discord.',
     reward: 100,
-    link: 'https://discord.com',
-    icon: null
+    link: 'https://ais-dev-72b5wlqzgb2mcjbso2ducs-682135868049.europe-west2.run.app/',
+    icon: <img src="https://img.icons8.com/ios-filled/50/ffffff/discord-logo.png" className="w-5 h-5" alt="Discord" referrerPolicy="no-referrer" />
+  },
+  {
+    id: 'linkedin_follow',
+    title: 'Follow on LinkedIn',
+    description: 'Follow Exnus Protocol on LinkedIn to stay connected with our professional network.',
+    reward: 50,
+    link: 'https://www.linkedin.com/in/exnus-protocol-248a85277?utm_source=share_via&utm_content=profile&utm_medium=member_android',
+    icon: <img src="https://img.icons8.com/ios-filled/50/ffffff/linkedin.png" className="w-5 h-5" alt="LinkedIn" referrerPolicy="no-referrer" />
+  },
+  {
+    id: 'telegram_group_join',
+    title: 'Join Telegram Community',
+    description: 'Join our Telegram community group to chat with other miners and the team.',
+    reward: 50,
+    link: 'https://t.me/exnusprotocolchat',
+    icon: <img src="https://img.icons8.com/ios-filled/50/ffffff/telegram-app.png" className="w-5 h-5" alt="Telegram" referrerPolicy="no-referrer" />
   }
 ];
 
 export default function Tasks() {
   const { publicKey } = useWallet();
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
+  const [readyToClaim, setReadyToClaim] = useState<string[]>([]);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [processingGo, setProcessingGo] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (publicKey) {
+      fetchUserData();
+    } else {
+      setLoading(false);
+    }
+  }, [publicKey]);
+
+  const fetchUserData = async () => {
+    try {
+      const res = await axios.get(`/api/user/${publicKey?.toBase58()}`);
+      if (res.data && res.data.completedTasks) {
+        setCompletedTasks(res.data.completedTasks);
+      }
+    } catch (err) {
+      console.error("Error fetching user tasks:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTaskClick = (task: Task) => {
-    if (completedTasks.includes(task.id) || claiming === task.id) return;
+    if (completedTasks.includes(task.id) || claiming === task.id || readyToClaim.includes(task.id) || processingGo === task.id) return;
     
     // Open link
     window.open(task.link, '_blank');
     
-    // Simulate claiming process
-    setClaiming(task.id);
+    // Set as processing for 5 seconds
+    setProcessingGo(task.id);
+    
     setTimeout(() => {
-      setCompletedTasks(prev => [...prev, task.id]);
-      setClaiming(null);
-    }, 3000);
+      setReadyToClaim(prev => [...prev, task.id]);
+      setProcessingGo(null);
+    }, 5000);
+  };
+
+  const handleClaimClick = async (task: Task) => {
+    if (claiming || !publicKey) return;
+
+    setClaiming(task.id);
+    
+    // Process for 7 seconds as requested
+    setTimeout(async () => {
+      try {
+        const res = await axios.post('/api/tasks/complete', {
+          wallet: publicKey.toBase58(),
+          taskId: task.id,
+          reward: task.reward
+        });
+
+        if (res.data.success) {
+          setCompletedTasks(prev => [...prev, task.id]);
+          setReadyToClaim(prev => prev.filter(id => id !== task.id));
+        }
+      } catch (err) {
+        console.error("Error claiming task reward:", err);
+      } finally {
+        setClaiming(null);
+      }
+    }, 7000);
   };
 
   return (
@@ -78,10 +146,15 @@ export default function Tasks() {
             You need to connect your Solana wallet to participate in tasks and claim rewards.
           </p>
         </div>
+      ) : loading ? (
+        <div className="flex justify-center py-20">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+        </div>
       ) : (
         <div className="grid gap-4">
           {TASKS.map((task, index) => {
             const isCompleted = completedTasks.includes(task.id);
+            const isReady = readyToClaim.includes(task.id);
             const isClaiming = claiming === task.id;
             
             return (
@@ -95,8 +168,8 @@ export default function Tasks() {
                 }`}
               >
                 <div className="flex items-start gap-4 flex-1">
-                  <div className={`mt-1 shrink-0 font-bold ${isCompleted ? 'text-green-500' : 'text-muted'}`}>
-                    {isCompleted ? "[✓]" : "[ ]"}
+                  <div className="w-10 h-10 rounded-lg bg-white/5 flex items-center justify-center shrink-0 border border-white/10">
+                    {task.icon}
                   </div>
                   <div>
                     <h3 className="font-bold text-lg flex items-center gap-2">
@@ -121,27 +194,35 @@ export default function Tasks() {
                     </div>
                   </div>
                   
-                  <button
-                    onClick={() => handleTaskClick(task)}
-                    disabled={isCompleted || isClaiming}
-                    className={`px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2 ${
-                      isCompleted 
-                        ? 'bg-white/5 text-muted cursor-not-allowed' 
-                        : 'bg-primary text-white hover:bg-accent'
-                    }`}
-                  >
-                    {isClaiming ? (
-                      <>
-                        Verifying...
-                      </>
-                    ) : isCompleted ? (
-                      'Claimed'
-                    ) : (
-                      <>
-                        Go
-                      </>
-                    )}
-                  </button>
+                  {isCompleted ? (
+                    <div className="px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest bg-white/5 text-muted cursor-not-allowed">
+                      Claimed
+                    </div>
+                  ) : isReady || isClaiming ? (
+                    <button
+                      onClick={() => handleClaimClick(task)}
+                      disabled={isClaiming}
+                      className={`px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2 ${
+                        isClaiming 
+                          ? 'bg-white/10 text-muted cursor-not-allowed' 
+                          : 'bg-green-500 text-black hover:bg-green-400'
+                      }`}
+                    >
+                      {isClaiming ? 'Verifying...' : 'Claim'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleTaskClick(task)}
+                      disabled={processingGo === task.id}
+                      className={`px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${
+                        processingGo === task.id
+                          ? 'bg-white/10 text-muted cursor-not-allowed'
+                          : 'bg-primary text-white hover:bg-accent'
+                      }`}
+                    >
+                      {processingGo === task.id ? 'Processing...' : 'Go'}
+                    </button>
+                  )}
                 </div>
               </motion.div>
             );

@@ -294,13 +294,13 @@ export default function Dashboard() {
           )}
           <div className="data-value">
             <StatTooltip 
-              title="Total Mined" 
+              title="Block Height" 
               description="The current block height of the Exnus network. Each block represents a successful mining event and reward distribution."
             >
-              #<AnimatedNumber value={status?.currentBlock || 0} />
+              <AnimatedNumber value={status?.currentBlock || 0} />
             </StatTooltip>
           </div>
-          <p className="text-[10px] text-muted">Total Mined: {formatNumber(status?.currentBlock || 0)} / {formatNumber(status?.totalBlocks || 0)}</p>
+          <p className="text-[10px] text-muted">Block Height: {formatNumber(status?.currentBlock || 0)} / {formatNumber(status?.totalBlocks || 0)}</p>
         </motion.div>
 
         <motion.div 

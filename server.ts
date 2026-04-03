@@ -345,6 +345,7 @@ async function getUser(wallet: string, req?: any) {
       referralCount: 0,
       referralRewards: 0,
       referralBonusClaimed: false,
+      completedTasks: [],
       referredBy: req?.query?.ref || null, // This will now be a referralId
       ip: req?.ip || req?.headers['x-forwarded-for'] || 'unknown',
       country: 'Unknown',
@@ -501,31 +502,6 @@ async function processBlock(): Promise<boolean> {
         const reward = Math.floor((user.hashpower / totalHashpower) * blockReward);
         user.totalEarned += reward;
         state.totalDistributed += reward;
-
-        // Referral commission: Referrer gets 10% of the reward
-        if (user.referredBy) {
-          const referrer = state.users.find(u => u.referralId === user.referredBy);
-          if (referrer) {
-            const commission = Math.floor(reward * 0.1);
-            if (commission > 0) {
-              referrer.totalEarned += commission;
-              referrer.referralRewards = (referrer.referralRewards || 0) + commission;
-              state.totalDistributed += commission;
-              
-              // Track referral reward
-              const refRecord = {
-                blockNumber: blockToMine,
-                reward: commission,
-                fromWallet: user.wallet,
-                timestamp: blockTimestamp,
-                type: 'referral_commission'
-              };
-              
-              batch.set(doc(db, 'users', referrer.wallet, 'referralHistory', `${blockToMine}-${user.wallet}`), pack(refRecord, ['blockNumber', 'timestamp', 'reward', 'fromWallet']));
-              batch.set(doc(db, 'users', referrer.wallet), pack(referrer, ['wallet', 'hashpower', 'totalEarned']));
-            }
-          }
-        }
 
         const rewardHash = crypto.createHash('sha256').update(`${blockToMine}-${blockTimestamp}-${user.wallet}-${reward}`).digest('hex');
         const record = {
@@ -875,8 +851,11 @@ app.post("/api/withdraw", async (req, res) => {
 app.get("/api/purchases/:wallet", async (req, res) => {
   const { wallet } = req.params;
   try {
-    const purchasesSnap = await getDocs(query(collection(db, 'purchases'), where('wallet', '==', wallet), orderBy('timestamp', 'desc')));
-    const purchases = purchasesSnap.docs.map(d => unpack(d.data()));
+    // Fetch all purchases for this wallet and sort in memory to avoid needing a composite index
+    const purchasesSnap = await getDocs(query(collection(db, 'purchases'), where('wallet', '==', wallet)));
+    const purchases = purchasesSnap.docs
+      .map(d => unpack(d.data()))
+      .sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
     res.json(purchases);
   } catch (err) {
     console.error(`Error fetching purchases for ${wallet}:`, err);
@@ -980,6 +959,47 @@ app.get("/api/leaderboard", (req, res) => {
   );
 
   res.json(sorted);
+});
+
+// Complete Task
+app.post("/api/tasks/complete", async (req, res) => {
+  const { wallet, taskId, reward } = req.body;
+
+  if (!wallet || !taskId || reward === undefined) {
+    return res.status(400).json({ error: "Missing parameters" });
+  }
+
+  try {
+    const user = await getUser(wallet, req);
+    
+    // Check if task already completed
+    if (!user.completedTasks) user.completedTasks = [];
+    if (user.completedTasks.includes(taskId)) {
+      return res.status(400).json({ error: "Task already completed" });
+    }
+
+    // Process reward
+    user.totalEarned = (user.totalEarned || 0) + reward;
+    user.completedTasks.push(taskId);
+    state.totalDistributed += reward;
+
+    await saveUser(user);
+
+    // Record the task completion in history
+    const taskRecord = {
+      type: 'task_reward',
+      taskId,
+      reward,
+      timestamp: Math.floor(Date.now() / 1000)
+    };
+
+    await addDoc(collection(db, 'users', wallet, 'history'), pack(taskRecord, ['type', 'taskId', 'reward', 'timestamp']));
+
+    res.json({ success: true, newBalance: (user.totalEarned - user.withdrawnAmount), completedTasks: user.completedTasks });
+  } catch (err) {
+    console.error(`Error completing task ${taskId} for ${wallet}:`, err);
+    res.status(500).json({ error: "Failed to complete task" });
+  }
 });
 
 // History

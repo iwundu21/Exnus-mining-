@@ -15,12 +15,13 @@ import AdminDashboard from './components/AdminDashboard';
 import Leaderboard from './components/Leaderboard';
 import Referral from './components/Referral';
 import Tasks from './components/Tasks';
+import HowItWorks from './components/HowItWorks';
 import DynamicBackground from './components/DynamicBackground';
 
 // Default styles that can be overridden by your app
 import '@solana/wallet-adapter-react-ui/styles.css';
 
-type Page = 'dashboard' | 'assets' | 'history' | 'purchase-history' | 'admin' | 'leaderboard' | 'referral' | 'tasks';
+type Page = 'dashboard' | 'assets' | 'history' | 'purchase-history' | 'admin' | 'leaderboard' | 'referral' | 'tasks' | 'how-it-works';
 
 class ErrorBoundary extends React.Component<{children: ReactNode}, {hasError: boolean, error: Error | null}> {
   state = { hasError: false, error: null as Error | null };
@@ -90,6 +91,7 @@ function MainContent() {
       case 'leaderboard': return <Leaderboard />;
       case 'referral': return <Referral />;
       case 'tasks': return <Tasks />;
+      case 'how-it-works': return <HowItWorks />;
       default: return <Dashboard />;
     }
   };
@@ -99,7 +101,7 @@ function MainContent() {
       <DynamicBackground />
       {/* Desktop Sidebar */}
       <aside className="sidebar">
-        <div className="p-6">
+        <div className="p-4">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg overflow-hidden flex items-center justify-center bg-primary/20">
               <img 
@@ -116,7 +118,7 @@ function MainContent() {
           </div>
         </div>
         
-        <nav className="flex-1 py-6">
+        <nav className="flex-1 py-6 px-4 flex flex-col gap-1">
           <button 
             onClick={() => setCurrentPage('dashboard')}
             className={cn("nav-item", currentPage === 'dashboard' && "active")}
@@ -159,9 +161,15 @@ function MainContent() {
           >
             <span>Tasks</span>
           </button>
+          <button 
+            onClick={() => setCurrentPage('how-it-works')}
+            className={cn("nav-item", currentPage === 'how-it-works' && "active")}
+          >
+            <span>How it Works</span>
+          </button>
         </nav>
 
-        <div className="p-6 space-y-4">
+        <div className="p-4 space-y-4">
           <div className="space-y-2">
             <WalletMultiButton className="!bg-primary !w-full !rounded-lg !h-10 !text-sm !font-medium" />
           </div>
@@ -172,12 +180,9 @@ function MainContent() {
             {isAdmin && (
               <button 
                 onClick={() => setCurrentPage('admin')}
-                className={cn(
-                  "w-full flex items-center justify-center gap-2 text-[10px] text-muted hover:text-primary transition-colors uppercase tracking-widest font-bold",
-                  currentPage === 'admin' && "text-primary"
-                )}
+                className={cn("nav-item", currentPage === 'admin' && "active")}
               >
-                Admin Dashboard
+                <span>Admin Dashboard</span>
               </button>
             )}
           </div>
@@ -217,6 +222,7 @@ function MainContent() {
               <button onClick={() => setCurrentPage('leaderboard')} className="hover:text-primary transition-colors">Leaderboard</button>
               <button onClick={() => setCurrentPage('referral')} className="hover:text-primary transition-colors">Referral</button>
               <button onClick={() => setCurrentPage('tasks')} className="hover:text-primary transition-colors">Tasks</button>
+              <button onClick={() => setCurrentPage('how-it-works')} className="hover:text-primary transition-colors">How it Works</button>
               <button onClick={() => setCurrentPage('assets')} className="hover:text-primary transition-colors">Assets</button>
               <button onClick={() => setCurrentPage('history')} className="hover:text-primary transition-colors">Mining History</button>
               <button onClick={() => setCurrentPage('purchase-history')} className="hover:text-primary transition-colors">Purchase History</button>
@@ -273,6 +279,12 @@ function MainContent() {
           className={cn("nav-item", currentPage === 'tasks' && "active")}
         >
           <span>Tasks</span>
+        </button>
+        <button 
+          onClick={() => setCurrentPage('how-it-works')}
+          className={cn("nav-item", currentPage === 'how-it-works' && "active")}
+        >
+          <span>Info</span>
         </button>
         {isAdmin && (
           <button 

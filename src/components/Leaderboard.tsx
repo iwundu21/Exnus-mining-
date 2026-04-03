@@ -24,6 +24,8 @@ export default function Leaderboard() {
   const [miners, setMiners] = useState<Miner[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const isFetchingRef = useRef(false);
 
   const userWallet = publicKey?.toBase58();
@@ -58,7 +60,10 @@ export default function Leaderboard() {
   );
 
   const topThree = miners.slice(0, 3);
-  const restOfMiners = filteredMiners.slice(0, 50); // Show top 50 in list
+  
+  // Pagination logic
+  const totalPages = Math.ceil(filteredMiners.length / itemsPerPage);
+  const paginatedMiners = filteredMiners.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   return (
     <div className="space-y-12">
@@ -231,7 +236,10 @@ export default function Leaderboard() {
             placeholder="Search for a miner..."
             className="w-full bg-white/5 border border-white/10 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-primary/50 transition-colors"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              setSearchTerm(e.target.value);
+              setCurrentPage(1);
+            }}
           />
         </div>
 
@@ -255,8 +263,8 @@ export default function Leaderboard() {
                       </div>
                     </td>
                   </tr>
-                ) : restOfMiners.length > 0 ? (
-                  restOfMiners.map((miner, index) => {
+                ) : paginatedMiners.length > 0 ? (
+                  paginatedMiners.map((miner, index) => {
                     const rank = miners.indexOf(miner) + 1;
                     return (
                       <motion.tr 
@@ -326,6 +334,54 @@ export default function Leaderboard() {
             </table>
           </div>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <p className="text-xs text-muted">
+              Showing <span className="text-white font-bold">{(currentPage - 1) * itemsPerPage + 1}</span> to <span className="text-white font-bold">{Math.min(currentPage * itemsPerPage, filteredMiners.length)}</span> of <span className="text-white font-bold">{filteredMiners.length}</span> miners
+            </p>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                Previous
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum = currentPage;
+                  if (currentPage <= 3) pageNum = i + 1;
+                  else if (currentPage >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = currentPage - 2 + i;
+                  
+                  if (pageNum <= 0 || pageNum > totalPages) return null;
+
+                  return (
+                    <button 
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={cn(
+                        "w-8 h-8 rounded-lg text-xs font-bold transition-all",
+                        currentPage === pageNum ? "bg-primary text-white" : "bg-white/5 text-muted hover:bg-white/10"
+                      )}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+              </div>
+              <button 
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-xs font-bold uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
